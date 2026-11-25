@@ -4,9 +4,14 @@
   const P = globalThis.BmiProtocol;
   const A = globalThis.BmiAnalysis;
   const T = globalThis.BmiTimeline;
+  const AT = globalThis.BmiAttitude;
   const $ = id => document.getElementById(id);
   const AXES = ['x', 'y', 'z'];
   const COLORS = { x: '#f2a47e', y: '#a9dfb8', z: '#89b7f0' };
+  const CHART = {
+    grid: '#29343b', gridStrong: '#3a484e', gridMinor: '#253139', label: '#7c909d',
+    selectionFill: '#609cf343', selectionLine: '#8ab8ff', marker: '#ffd278',
+  };
   const CAPACITY = 96000;
   const MAX_SESSIONS = 4;
   const STREAM_CTRL = 0x02;
@@ -41,6 +46,14 @@
   let noticeKey = '';
   let customWindowSeconds = 20;
   const waveCanvas = $('waveCanvas');
+  const attitudeCanvas = $('attitudeCanvas');
+  const attitudeView = new AT.SensorRenderer(attitudeCanvas);
+  const attitudeFilter = new AT.AttitudeFilter({ tau: 0.12 });
+  let attitudeTarget = null;
+  let attitudeOrbit = null;
+  let lastAttitudeDraw = 0;
+  let themeLocked = false;
+  try { themeLocked = !!localStorage.getItem('bmi-theme'); } catch (_) { themeLocked = false; }
   const viewport = new T.WaveViewport();
   let waveSession = null;
   let waveChart = null;
@@ -76,6 +89,58 @@
     $('connectButton').disabled = busy || !('serial' in navigator) || !isSecureContext;
     renderStreamControls();
     dirty = true;
+  }
+
+  function cssVariable(name, fallback) {
+    const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    return value || fallback;
+  }
+
+  function syncThemeColors() {
+    COLORS.x = cssVariable('--x', COLORS.x);
+    COLORS.y = cssVariable('--y', COLORS.y);
+    COLORS.z = cssVariable('--z', COLORS.z);
+    CHART.grid = cssVariable('--chart-grid', CHART.grid);
+    CHART.gridStrong = cssVariable('--chart-grid-strong', CHART.gridStrong);
+    CHART.gridMinor = cssVariable('--chart-grid-minor', CHART.gridMinor);
+    CHART.label = cssVariable('--chart-label', CHART.label);
+    CHART.selectionFill = cssVariable('--chart-selection-fill', CHART.selectionFill);
+    CHART.selectionLine = cssVariable('--chart-selection-line', CHART.selectionLine);
+    CHART.marker = cssVariable('--chart-marker', CHART.marker);
+    attitudeView.setPalette({
+      axisX: COLORS.x, axisY: COLORS.y, axisZ: COLORS.z,
+      pcbTop: cssVariable('--model-pcb', '#2a4f40'),
+      pcbBottom: cssVariable('--model-pcb-bottom', '#1b352b'),
+      edge: cssVariable('--model-edge', '#3f6d5a'),
+      chip: cssVariable('--model-chip', '#141d19'),
+      chipEdge: cssVariable('--model-chip-edge', '#33463e'),
+      connector: cssVariable('--model-connector', '#8c9a92'),
+      grid: cssVariable('--model-grid', '#2c3b35'),
+      shadow: cssVariable('--model-shadow', '#000000'),
+      accent: cssVariable('--accent', '#b5ebc7'),
+      panel: cssVariable('--panel', '#171e23'),
+      text: cssVariable('--text', '#e7edf0'),
+      muted: cssVariable('--muted', '#86959e'),
+    });
+  }
+
+  function applyTheme(theme, persist = true) {
+    const next = theme === 'light' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = next;
+    if (persist) {
+      themeLocked = true;
+      try { localStorage.setItem('bmi-theme', next); } catch (_) { /* 本地文件仍可正常切换 */ }
+    }
+    const button = $('themeButton');
+    const label = next === 'light' ? '切换到深色主题' : '切换到浅色主题';
+    button.setAttribute('aria-pressed', String(next === 'light'));
+    button.setAttribute('aria-label', label);
+    button.title = label;
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.content = next === 'light' ? '#f3f6f4' : '#101519';
+    syncThemeColors();
+    dirty = true;
+    waveDirty = true;
   }
 
   function streamNode(session = chosenSession()) {
@@ -562,6 +627,7 @@
       else if (lastData && lastData >= connectedAt && age < 3 && data.lastFrameAt >= connectedAt) notice(`正在接收节点 ${session.nodeId} / boot ${session.bootId}。导出 CSV 可保存当前缓存。`);
     }
     if (data.evicted) text('bufferLabel', `最近 ${MAX_SESSIONS} 个会话 · 原始 ${count(CAPACITY)} 点 · 趋势 1 小时`);
+    updateAttitudeMetrics(now);
   }
 
   function prepareCanvas(canvas) {
@@ -589,19 +655,19 @@
     ctx.lineWidth = 1;
     for (let i = 0; i <= 4; i++) {
       const y = top + (bottom - top) * i / 4;
-      ctx.strokeStyle = i === 2 && yMin < 0 ? '#3a484e' : '#29343b';
+      ctx.strokeStyle = i === 2 && yMin < 0 ? CHART.gridStrong : CHART.grid;
       ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(right, y); ctx.stroke();
-      ctx.fillStyle = '#7c909d'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = CHART.label; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
       ctx.fillText(decimal(yMax - (yMax - yMin) * i / 4), left - 10, y);
       const x = left + (right - left) * i / 4;
-      ctx.strokeStyle = '#253139'; ctx.setLineDash([2, 5]);
+      ctx.strokeStyle = CHART.gridMinor; ctx.setLineDash([2, 5]);
       ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke(); ctx.setLineDash([]);
       if (i % labelStep === 0) {
         ctx.textAlign = i === 0 ? 'left' : i === 4 ? 'right' : 'center'; ctx.textBaseline = 'top';
         ctx.fillText(labels[i], x, bottom + 10);
       }
     }
-    ctx.fillStyle = '#7c909d'; ctx.textAlign = 'right'; ctx.textBaseline = 'top';
+    ctx.fillStyle = CHART.label; ctx.textAlign = 'right'; ctx.textBaseline = 'top';
     ctx.fillText('g', left - 10, 1);
   }
   function niceScale(value) {
@@ -712,15 +778,15 @@
     if (waveDrag?.selecting && waveDrag.moved) {
       const x1 = sx(Math.min(waveDrag.start, waveDrag.end));
       const x2 = sx(Math.max(waveDrag.start, waveDrag.end));
-      ctx.fillStyle = '#609cf343';
+      ctx.fillStyle = CHART.selectionFill;
       ctx.fillRect(x1, top, x2 - x1, bottom - top);
-      ctx.strokeStyle = '#8ab8ff';
+      ctx.strokeStyle = CHART.selectionLine;
       ctx.lineWidth = 1;
       ctx.strokeRect(x1, top, x2 - x1, bottom - top);
     }
     if (markerInView) {
       const x = sx(waveMarker);
-      ctx.strokeStyle = ctx.fillStyle = '#ffd278';
+      ctx.strokeStyle = ctx.fillStyle = CHART.marker;
       ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom + 4); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(x - 5, top - 7); ctx.lineTo(x + 5, top - 7); ctx.lineTo(x, top + 1); ctx.fill();
@@ -794,6 +860,64 @@
     text('statsQuality', `缺样率按近 60 s · 已收 ${count(quality.received)} 点 · 缺样 ${count(quality.missing)} 点`);
     document.querySelector('.stats-panel').classList.toggle('degraded', quality.isDegraded);
   }
+  function latestGravity(session) {
+    if (!session || !session.sampleCount) return null;
+    const rate = session.odr || 3200;
+    // 约 20 ms 的窗口抑制振动噪声；低采样率时至少取 8 点。
+    const wanted = Math.min(96, Math.max(8, Math.round(rate * 0.02)));
+    const samples = session.getSamples(wanted);
+    if (!samples.length) return null;
+    let x = 0, y = 0, z = 0, count = 0;
+    for (let i = samples.length - 1; i >= 0; i--) {
+      const sample = samples[i];
+      x += sample.gx; y += sample.gy; z += sample.gz; count++;
+      if (!sample.continuous) break;
+    }
+    const gx = x / count, gy = y / count, gz = z / count;
+    const magnitude = Math.hypot(gx, gy, gz);
+    if (!(magnitude > 1e-6)) return null;
+    return { x: gx, y: gy, z: gz, magnitude };
+  }
+
+  function drawAttitude(now) {
+    const session = chosenSession();
+    const gravity = latestGravity(session);
+    if (gravity) {
+      attitudeTarget = gravity;
+      attitudeFilter.update(gravity.x, gravity.y, gravity.z, now);
+    }
+    const lastData = session && data.lastDataAt.get(session.key);
+    const stale = !gravity || !lastData || now - lastData > 1500;
+    attitudeView.draw(attitudeFilter.quaternion, { stale });
+    $('attitudeEmpty').hidden = !!attitudeFilter.quaternion;
+  }
+
+  function updateAttitudeMetrics(now) {
+    const session = chosenSession();
+    const gravity = attitudeTarget;
+    const lastData = session && data.lastDataAt.get(session.key);
+    const fresh = !!(mode === 'live' && gravity && lastData && now - lastData <= 1500);
+    const quaternion = attitudeFilter.quaternion;
+    const tilt = quaternion ? AT.tiltFromQuaternion(quaternion) : null;
+    text('attitudePitch', tilt ? `${tilt.xElevation.toFixed(1)}°` : '—');
+    text('attitudeRoll', tilt ? `${tilt.yElevation.toFixed(1)}°` : '—');
+    text('attitudeTilt', tilt ? `${tilt.zTilt.toFixed(1)}°` : '—');
+    text('attitudeMagnitude', gravity ? `${gravity.magnitude.toFixed(3)} g` : '—');
+    text('attitudeX', gravity ? `${gravity.x.toFixed(3)} g` : '—');
+    text('attitudeY', gravity ? `${gravity.y.toFixed(3)} g` : '—');
+    text('attitudeZ', gravity ? `${gravity.z.toFixed(3)} g` : '—');
+    let badge = '等待样本';
+    let style = '';
+    if (gravity) {
+      if (mode !== 'live') badge = '已断开 · 最后姿态';
+      else if (!fresh) { badge = '样本已停更'; style = 'warn'; }
+      else if (Math.abs(gravity.magnitude - 1) > 0.12) { badge = '运动干扰 · 姿态含加速度'; style = 'warn'; }
+      else badge = '重力解算';
+    }
+    text('attitudeBadge', badge);
+    $('attitudeBadge').className = `health-badge ${style}`;
+  }
+
   function drawCharts() {
     const session = chosenSession();
     const requested = Number($('statisticsWindow').value);
@@ -845,6 +969,10 @@
     } else if (waveDirty && !document.hidden) {
       drawWave(chosenSession()); waveDirty = false;
     }
+    if (!document.hidden && now - lastAttitudeDraw > 33) {
+      drawAttitude(now);
+      lastAttitudeDraw = now;
+    }
     requestAnimationFrame(render);
   }
 
@@ -852,8 +980,41 @@
   $('stopStreamButton').addEventListener('click', () => controlStream(false));
   $('startStreamButton').addEventListener('click', () => controlStream(true));
   $('exportButton').addEventListener('click', exportCsv);
+  $('themeButton').addEventListener('click', () => {
+    applyTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light');
+  });
+  if (window.matchMedia) {
+    const scheme = matchMedia('(prefers-color-scheme: light)');
+    scheme.addEventListener('change', event => {
+      if (!themeLocked) applyTheme(event.matches ? 'light' : 'dark', false);
+    });
+  }
+  attitudeCanvas.addEventListener('pointerdown', event => {
+    if (!event.isPrimary || event.button !== 0) return;
+    attitudeOrbit = { id: event.pointerId, x: event.clientX, y: event.clientY };
+    attitudeCanvas.setPointerCapture(event.pointerId);
+  });
+  attitudeCanvas.addEventListener('pointermove', event => {
+    if (!attitudeOrbit || attitudeOrbit.id !== event.pointerId) return;
+    const dx = event.clientX - attitudeOrbit.x;
+    const dy = event.clientY - attitudeOrbit.y;
+    attitudeOrbit.x = event.clientX;
+    attitudeOrbit.y = event.clientY;
+    attitudeView.orbit(dx, dy);
+  });
+  function finishAttitudeOrbit(event) {
+    if (!attitudeOrbit || attitudeOrbit.id !== event.pointerId) return;
+    const id = attitudeOrbit.id;
+    attitudeOrbit = null;
+    if (attitudeCanvas.hasPointerCapture(id)) attitudeCanvas.releasePointerCapture(id);
+  }
+  for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
+    attitudeCanvas.addEventListener(type, finishAttitudeOrbit);
+  }
+  attitudeCanvas.addEventListener('dblclick', () => attitudeView.resetView());
   $('sessionSelect').addEventListener('change', event => {
     data.selected = event.target.value; cachedAnalysis.key = ''; dirty = true;
+    attitudeFilter.reset(); attitudeTarget = null;
     renderStreamControls();
   });
   function followLatestWave() {
@@ -1003,8 +1164,10 @@
   if ('serial' in navigator) navigator.serial.addEventListener('disconnect', event => {
     if (event.target === port || event.port === port) disconnect('网关 USB 已断开。缓存仍可导出，重新插入后可再次连接。', true);
   });
+  applyTheme(document.documentElement.dataset.theme === 'light' ? 'light' : 'dark', false);
   setMode('disconnected');
   if (!('serial' in navigator) || !isSecureContext) notice('当前浏览器不能连接串口。请用桌面版 Chrome 或 Edge 打开此 HTML。', 'error');
+  drawAttitude(performance.now());
   updateMetrics(performance.now());
   drawCharts();
   requestAnimationFrame(render);

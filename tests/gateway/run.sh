@@ -20,3 +20,12 @@ for test in test_gateway test_host_link test_usb test_radio; do
         "$@" -o "$OUT/$test"
     "$OUT/$test"
 done
+# PA 板（AT2401C）构建：PA5 让给 TX_EN，验证回调不再驱动测点、背压与校准窗口关前端、
+# 校准后重新登记 PA 控制。
+"$CC" -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -DGW_BOARD_PA=1 \
+    -I"$ROOT/tests/gateway/stubs" -I"$ROOT/firmware/gateway/app" -I"$ROOT/firmware/common" \
+    "$ROOT/tests/gateway/test_radio.c" "$ROOT/firmware/gateway/app/gateway_core.c" \
+    "$ROOT/firmware/gateway/app/host_parser.c" "$ROOT/firmware/common/proto.c" \
+    "$ROOT/firmware/common/framing.c" "$ROOT/firmware/common/crc16.c" \
+    -o "$OUT/test_radio_pa"
+"$OUT/test_radio_pa"

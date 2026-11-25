@@ -9,7 +9,12 @@ gw_core_t gateway;
 #define LOG_STAGE(text) UART1_SendString((uint8_t *)(text "\r\n"), sizeof(text "\r\n") - 1u)
 static void log_startup(void)
 {
-    static const uint8_t prefix[] = "CH592F BMI323 gateway v1.5 gw=";
+    static const uint8_t prefix[] =
+#if GW_BOARD_PA
+        "CH592F BMI323 gateway-pa v1.5 gw=";
+#else
+        "CH592F BMI323 gateway v1.5 gw=";
+#endif
     uint8_t id[] = {'0' + APP_GW_ID / 100,
                     '0' + APP_GW_ID / 10 % 10,
                     '0' + APP_GW_ID % 10, '\r', '\n'};
@@ -52,8 +57,15 @@ int main(void)
     PWR_DCDCCfg(ENABLE);
 #endif
     SetSysClock(CLK_SOURCE_PLL_60MHz);
+#if GW_BOARD_PA
+    /* 先拉低再配输出：PA5/PA4 是 AT2401C 的 TX_EN/RX_EN，浮空电平可能误开前端。
+     * PA6 保留为 RF_Rx 测点，PA5 不再用作 RF 回调测点。 */
+    GPIOA_ResetBits(GPIO_Pin_5 | GPIO_Pin_4 | GPIO_Pin_6);
+    GPIOA_ModeCfg(GPIO_Pin_5 | GPIO_Pin_4 | GPIO_Pin_6, GPIO_ModeOut_PP_5mA);
+#else
     GPIOA_ResetBits(GPIO_Pin_5 | GPIO_Pin_6);
     GPIOA_ModeCfg(GPIO_Pin_5 | GPIO_Pin_6, GPIO_ModeOut_PP_5mA);
+#endif
     GPIOA_SetBits(GPIO_Pin_9);
     GPIOA_ModeCfg(GPIO_Pin_9, GPIO_ModeOut_PP_5mA);
     UART1_DefInit();
@@ -72,7 +84,11 @@ int main(void)
     LOG_STAGE("CDC ready");
     gateway_host_init();
     app_stack_measure();
+#if GW_BOARD_PA
+    LOG_STAGE("RF init (PA)");
+#else
     LOG_STAGE("RF init");
+#endif
     gateway_radio_init();
     run();
 }

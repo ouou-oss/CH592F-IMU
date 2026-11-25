@@ -4,6 +4,7 @@
 #include "CONFIG.h"
 #include "gateway_core.h"
 #include "host_parser.h"
+#include "pa_control.h"
 
 #ifndef APP_GW_ID
 #define APP_GW_ID 1u

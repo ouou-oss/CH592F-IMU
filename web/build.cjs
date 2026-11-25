@@ -7,6 +7,7 @@ const files = {
   PROTOCOL: 'js/protocol.js',
   ANALYSIS: 'src/analysis.js',
   TIMELINE: 'src/timeline.js',
+  ATTITUDE: 'src/attitude.js',
   APP: 'src/app.js',
 };
 let html = fs.readFileSync(path.join(__dirname, 'client.template.html'), 'utf8');

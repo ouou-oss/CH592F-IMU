@@ -50,3 +50,95 @@
 .sleep-dialog h2 { margin: 14px 0 6px; font-size: 22px; }
 .sleep-dialog p { margin: 0 0 20px; font-size: 14px; color: #b3c2ca; }
 .sleep-dialog button { margin-left: auto; }
+
+/* 明暗主题：根变量保持暗色，浅色主题覆盖语义色和少量硬编码底色。 */
+:root{
+  color-scheme:dark;
+  --chart-grid:#29343b;--chart-grid-strong:#3a484e;--chart-grid-minor:#253139;--chart-label:#7c909d;
+  --chart-selection-fill:#609cf343;--chart-selection-line:#8ab8ff;--chart-marker:#ffd278;
+  --model-pcb:#2f6b55;--model-pcb-bottom:#204434;--model-edge:#5d9a7e;
+  --model-chip:#0f1714;--model-chip-edge:#2c3f37;--model-connector:#9aa8a0;
+  --model-grid:#2c3b35;--model-shadow:#000000;
+}
+html[data-theme="light"]{
+  color-scheme:light;
+  --bg:#f3f6f4;--panel:#ffffff;--line:#dde6e1;--text:#1d2a25;--muted:#5c7068;--subtle:#8b9e96;
+  --accent:#2f7d55;--x:#bb5426;--y:#2c7a4c;--z:#2e62a6;
+  --chart-grid:#e2eae6;--chart-grid-strong:#bfd0c8;--chart-grid-minor:#edf3f0;--chart-label:#5e726a;
+  --chart-selection-fill:#3f7fbf26;--chart-selection-line:#3f7fbf;--chart-marker:#a86b00;
+  --model-pcb:#3b8564;--model-pcb-bottom:#2b654b;--model-edge:#57a17d;
+  --model-chip:#1c2b25;--model-chip-edge:#3c5449;--model-connector:#c2cdc7;
+  --model-grid:#cfdcd5;--model-shadow:#23352d;
+}
+html[data-theme="light"] body{background:radial-gradient(ellipse at 15% -20%,#d8efe3b3,transparent 52%),var(--bg)}
+html[data-theme="light"]{scrollbar-color:#b9c9c1 #eef2f0}
+html[data-theme="light"] select{background:#f7faf8;border-color:#cfdcd5}
+html[data-theme="light"] .button{background:#eff4f1;border-color:#d3dfd9;color:#26362f}
+html[data-theme="light"] .button:hover:enabled{background:#e4ece7}
+html[data-theme="light"] .button.primary{background:var(--accent);border-color:var(--accent);color:#f6fffa}
+html[data-theme="light"] .button.primary:hover:enabled{background:#276a47}
+html[data-theme="light"] .badge{color:#5c7068}
+html[data-theme="light"] .badge i{background:#a5b4ad;box-shadow:0 0 0 4px #a5b4ad12}
+html[data-theme="light"] .badge.live{color:#246b4a}
+html[data-theme="light"] .badge.live i{background:#2f9e68;box-shadow:0 0 0 4px #2f9e6818}
+html[data-theme="light"] .local-label{border-color:#cfe0d5;color:#4b6f5b}
+html[data-theme="light"] .notice{background:#edf6f0;border-color:#cfe3d6;color:#3d5c4b}
+html[data-theme="light"] .notice-dot{background:#68a37f}
+html[data-theme="light"] .notice.error{background:#fcefee;border-color:#eec8c2;color:#8e332a}
+html[data-theme="light"] .notice.error .notice-dot{background:#c4574a}
+html[data-theme="light"] .notice.sleeping{background:#eaf3fc;border-color:#c4d9ee;color:#2b4d6c}
+html[data-theme="light"] .notice.sleeping .notice-dot{background:#5a91c4}
+html[data-theme="light"] .metric-label{color:#35463e}
+html[data-theme="light"] .signal-bars i{background:#d2ded7}
+html[data-theme="light"] .signal-bars i.on{background:#2f9e68}
+html[data-theme="light"] .text-tag{color:#3c6b52;background:#e8f2ec;border-color:#cfe2d6}
+html[data-theme="light"] .chart-empty svg{color:#9cb3a7}
+html[data-theme="light"] .chart-empty strong{color:#405349}
+html[data-theme="light"] .panel-foot{border-top-color:#e6ede9}
+html[data-theme="light"] .history-label{border-top-color:#e6ede9}
+html[data-theme="light"] .latest-time{color:#3f6b55}
+html[data-theme="light"] .wave-marker-label{color:#a06a00}
+html[data-theme="light"] .wave-toolbar input{background:#f7faf8;border-color:#cfdcd5}
+html[data-theme="light"] .spectrum-toggle{background:#eff4f1}
+html[data-theme="light"] .spectrum-toggle[aria-pressed="false"]{background:transparent}
+html[data-theme="light"] th,html[data-theme="light"] td{border-bottom-color:#e6ede9}
+html[data-theme="light"] dt small{color:#84968f}
+html[data-theme="light"] .baseline-note{color:#71847c}
+html[data-theme="light"] .more-details{border-top-color:#e2eae6}
+html[data-theme="light"] footer{color:#6b7f77}
+html[data-theme="light"] .footer-dot{background:#8aa598}
+html[data-theme="light"] .text-button{color:#4c6459}
+html[data-theme="light"] dialog{border-color:#cfdcd5;box-shadow:0 20px 100px #1f2f2a26}
+html[data-theme="light"] dialog::backdrop{background:#e7eeebcc;backdrop-filter:blur(5px)}
+html[data-theme="light"] dialog li{color:#41544b}
+html[data-theme="light"] .sleep-dialog{border-color:#c4d9ee}
+html[data-theme="light"] .sleep-dialog-icon{background:#e6f1fb;color:#3a6f9e}
+html[data-theme="light"] .sleep-dialog p{color:#4c5f57}
+
+.theme-toggle{width:34px;min-width:34px;min-height:34px;padding:0;display:inline-flex;align-items:center;justify-content:center;flex:none}
+.theme-toggle svg{width:16px;height:16px}
+.theme-toggle .icon-moon{display:none}
+html[data-theme="light"] .theme-toggle .icon-sun{display:none}
+html[data-theme="light"] .theme-toggle .icon-moon{display:block}
+
+/* 姿态面板 */
+.stats-panel{grid-area:stats}
+.attitude-panel{grid-area:attitude;display:flex;flex-direction:column}
+.health-panel{grid-area:health}
+.attitude-stage{position:relative;height:clamp(250px,30vh,330px);margin:9px 13px 0 6px;border-radius:8px;overflow:hidden}
+.attitude-stage canvas{display:block;width:100%;height:100%;cursor:grab;touch-action:pan-y}
+.attitude-stage canvas:active{cursor:grabbing}
+.attitude-legend{position:absolute;left:12px;bottom:9px;display:flex;gap:13px;font:10px var(--mono);pointer-events:none}
+.attitude-legend span{display:inline-flex;align-items:center;gap:4px}
+.attitude-legend span::before{content:"";width:10px;height:2px;background:currentColor;border-radius:1px}
+.attitude-readouts{display:grid;grid-template-columns:1fr 1fr;gap:0 18px;margin:7px 21px 0;padding:9px 0 0;border-top:1px solid var(--line)}
+.attitude-readouts>div{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:4px 0}
+.attitude-readouts dt{font-size:10px;color:var(--muted)}
+.attitude-readouts dd{margin:0;font:11px var(--mono);white-space:nowrap}
+.attitude-vector{display:flex;flex-wrap:wrap;gap:4px 14px;margin:2px 21px 0;padding:4px 0 8px;font:10px var(--mono);color:var(--muted)}
+.attitude-vector b{font-weight:500;color:var(--text);margin-left:3px}
+.attitude-panel .panel-foot{margin-top:auto;padding:9px 20px}
+@media(min-width:1101px){.details-grid{grid-template-columns:minmax(0,1.25fr) minmax(0,1.05fr) minmax(0,1fr);grid-template-areas:"stats attitude health"}}
+@media(max-width:1100px){.details-grid{grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);grid-template-areas:"stats health" "attitude attitude"}.attitude-panel .attitude-readouts,.attitude-panel .attitude-vector{width:100%;max-width:620px;margin-left:auto;margin-right:auto}}
+@media(max-width:840px){.details-grid{grid-template-columns:1fr;grid-template-areas:"stats" "attitude" "health"}.attitude-readouts,.attitude-vector{max-width:none}}
+@media(max-width:540px){.attitude-stage{margin-left:0;margin-right:5px;height:260px}.attitude-readouts{margin-left:15px;margin-right:15px}.attitude-vector{margin-left:15px;margin-right:15px}.attitude-panel .panel-foot{padding-left:14px;padding-right:14px;font-size:9px}.theme-toggle{min-height:32px;width:32px;min-width:32px}}

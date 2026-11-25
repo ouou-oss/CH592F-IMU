@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<projectDescription>
+  <name>BMI323_gateway_pa</name>
+  <comment>CH592F BMI323：统一 Makefile 的 gateway-pa 构建入口</comment>
+  <projects/>
+  <buildSpec>
+    <buildCommand>
+      <name>org.eclipse.cdt.make.core.makeBuilder</name>
+      <triggers>full,incremental,</triggers>
+      <arguments>
+        <dictionary><key>org.eclipse.cdt.make.core.build.command</key><value>make</value></dictionary>
+        <dictionary><key>org.eclipse.cdt.make.core.build.target.auto</key><value>all</value></dictionary>
+        <dictionary><key>org.eclipse.cdt.make.core.build.target.inc</key><value>all</value></dictionary>
+        <dictionary><key>org.eclipse.cdt.make.core.enableAutoBuild</key><value>false</value></dictionary>
+        <dictionary><key>org.eclipse.cdt.make.core.enableCleanBuild</key><value>false</value></dictionary>
+        <dictionary><key>org.eclipse.cdt.make.core.enableFullBuild</key><value>true</value></dictionary>
+        <dictionary><key>org.eclipse.cdt.make.core.enableIncrementalBuild</key><value>true</value></dictionary>
+        <dictionary><key>org.eclipse.cdt.make.core.useDefaultBuildCmd</key><value>true</value></dictionary>
+      </arguments>
+    </buildCommand>
+    <buildCommand><name>org.eclipse.cdt.make.core.ScannerConfigBuilder</name><arguments/></buildCommand>
+  </buildSpec>
+  <natures>
+    <nature>org.eclipse.cdt.core.cnature</nature>
+    <nature>org.eclipse.cdt.make.core.makeNature</nature>
+    <nature>org.eclipse.cdt.make.core.ScannerConfigNature</nature>
+  </natures>
+  <linkedResources>
+    <link><name>app</name><type>2</type><locationURI>PARENT-3-PROJECT_LOC/firmware/gateway/app</locationURI></link>
+    <link><name>common</name><type>2</type><locationURI>PARENT-3-PROJECT_LOC/firmware/common</locationURI></link>
+    <link><name>sdk</name><type>2</type><locationURI>PARENT-3-PROJECT_LOC/firmware/sdk</locationURI></link>
+    <link><name>output</name><type>2</type><locationURI>PARENT-3-PROJECT_LOC/firmware/build/gateway-pa</locationURI></link>
+  </linkedResources>
+</projectDescription>

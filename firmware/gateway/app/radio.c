@@ -1,4 +1,5 @@
 #include "gateway_app.h"
+#include "pa_control.h"
 #include "stack_monitor.h"
 
 static uint8_t ack_buffers[2][GW_ACK_MAX] __attribute__((aligned(4)));
@@ -17,16 +18,28 @@ static GW_RAM void rf_callback(uint8_t state, uint8_t rsr, uint8_t *buffer)
     uint32_t now = gateway_now_us();
     callback_at = now;
     callback_seen = 1;
+#if !GW_BOARD_PA
+    /* PA 板上 PA5 是 AT2401C 的 TX_EN，这里不能再用作测点。 */
     GPIOA_SetBits(GPIO_Pin_5);
+#endif
     if (state == RX_MODE_RX_DATA) {
-        if (buffer != NULL) (void)gw_receive(&gateway, now, (int8_t)buffer[0], buffer + 2, buffer[1], rsr);
-        else ++gateway.type_err;
+        if (buffer != NULL) {
+#if GW_BOARD_PA && GW_RSSI_OFFSET_DB
+            /* PA 板的 LNA 增益已计入 rssi，按构建常量扣回，保持新旧网关可比。 */
+            int8_t rssi = (int8_t)((int8_t)buffer[0] + GW_RSSI_OFFSET_DB);
+            (void)gw_receive(&gateway, now, rssi, buffer + 2, buffer[1], rsr);
+#else
+            (void)gw_receive(&gateway, now, (int8_t)buffer[0], buffer + 2, buffer[1], rsr);
+#endif
+        } else ++gateway.type_err;
     }
     if (state == RX_MODE_TX_FINISH || state == RX_MODE_TX_FAIL) {
         idle_at = now;
         rearm_requested = 1;
     }
+#if !GW_BOARD_PA
     GPIOA_ResetBits(GPIO_Pin_5);
+#endif
 }
 
 void gateway_radio_init(void)
@@ -40,10 +53,22 @@ void gateway_radio_init(void)
     config.RxMaxlen = 251;
     config.TxMaxlen = 251;
     config.rfStatusCB = rf_callback;
+#if GW_BOARD_PA
+    /* 厂商要求 BLE_PAControlInit 在角色初始化之后、RF 开始工作之前调用。 */
+    if (RF_RoleInit() != 0) {
+        while (1) { __nop(); }
+    }
+    gateway_pa_init();
+    if (RF_Config(&config) != 0) {
+        gateway_pa_off();
+        while (1) { __nop(); }
+    }
+#else
     if (RF_RoleInit() != 0 || RF_Config(&config) != 0) {
         /* 初始化失败不进入半工作状态，由硬件看门狗复位。 */
         while (1) { __nop(); }
     }
+#endif
     last_calibration = gateway_now_us();
 }
 
@@ -54,6 +79,9 @@ static GW_RAM void rearm(uint32_t now)
     listening = 0;
     if (!gw_can_rearm(&gateway)) {
         /* 主动背压不是重挂耗时；恢复后从下一次收包结束重新计量。 */
+#if GW_BOARD_PA
+        gateway_pa_off();
+#endif
         idle_at = 0;
         PFIC_EnableIRQ(BLEL_IRQn);
         return;
@@ -88,10 +116,17 @@ GW_RAM void gateway_radio_poll(uint32_t now)
     /* 停止射频后才运行Flash中的温漂校准；恢复后继续RAM任务泵。 */
     if ((uint32_t)(now - last_calibration) >= 120000000u) {
         RF_Shut();
+#if GW_BOARD_PA
+        gateway_pa_off();
+#endif
         listening = 0;
         idle_at = 0;
         app_stack_measure();
         BLE_RegInit();
+#if GW_BOARD_PA
+        /* 寄存器重置后重新登记前端控制，避免校准后功放不再随收发翻转。 */
+        gateway_pa_init();
+#endif
         last_calibration = gateway_now_us();
         rearm_requested = 1;
     }

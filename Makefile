@@ -1,11 +1,13 @@
 HOST_CC ?= cc
 HOST_CFLAGS := -std=c99 -Wall -Wextra -Werror -pedantic -g -fsanitize=address,undefined -fno-omit-frame-pointer
 
-.PHONY: all firmware sensor gateway web test test-common test-sensor test-gateway test-docs test-web
+.PHONY: all firmware sensor gateway gateway-pa web test test-common test-sensor test-gateway test-docs test-web
 all: firmware
-firmware: sensor gateway
+firmware: sensor gateway gateway-pa
 sensor gateway:
 	$(MAKE) -C "firmware" ROLE=$@ all
+gateway-pa:
+	$(MAKE) -C "firmware" ROLE=gateway BOARD=pa all
 
 web:
 	node "web/build.cjs"
@@ -70,4 +72,4 @@ test-docs:
 	node "docs/site/tests/codec.test.cjs"
 
 test-web:
-	node --test "web/tests/protocol.test.cjs" "web/tests/analysis.test.cjs" "web/tests/timeline.test.cjs"
+	node --test "web/tests/protocol.test.cjs" "web/tests/analysis.test.cjs" "web/tests/timeline.test.cjs" "web/tests/attitude.test.cjs"
