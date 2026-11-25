@@ -9,31 +9,64 @@
 在项目根目录执行：
 
 ```sh
-make -C "firmware" ROLE=gateway all
+make -C "firmware" ROLE=gateway all            # 原板
+make -C "firmware" ROLE=gateway BOARD=pa all   # CH592F + AT2401C 前端板
 ```
 
-产物为 `firmware/build/gateway/gateway.{elf,hex,bin,map}`。烧录前检查板子角色；本工程不自动烧录。
-加 `LOG=1` 生成独立 `gateway-debug`，在RF启动前输出UART1启动标识及初始化阶段；运行期统计通过
-`GW_STATUS` 上报，不在收包期间阻塞打印。网关日志不引入stdio，队列和堆容量与发布版一致。
+原板产物为 `firmware/build/gateway/gateway.{elf,hex,bin,map}`，PA 板为
+`firmware/build/gateway-pa/gateway-pa.{elf,hex,bin,map}`；两种构建共用同一份 `gateway/app` 源码，
+只有板级初始化与前端控制不同（见下文“PA 版本”）。烧录前检查板子角色；本工程不自动烧录。
+加 `LOG=1` 生成独立 `gateway-debug` / `gateway-pa-debug`，在RF启动前输出UART1启动标识及初始化阶段；
+运行期统计通过 `GW_STATUS` 上报，不在收包期间阻塞打印。网关日志不引入stdio，队列和堆容量与发布版一致。
 
 | 用途 | CH592F 引脚 |
 |---|---|
 | USB D− / D+ | PB10 / PB11 |
 | UART1 调试 TX | PA9，115200 |
 | 外部 32.768 kHz 晶振 | PA10 / PA11 |
-| RF 回调测点 | PA5，每次回调期间为高 |
-| RX 重挂测点 | PA6，`RF_Rx` 调用期间为高 |
+| RF 回调测点（原板） | PA5，每次回调期间为高；PA 板上 PA5 改作 AT2401C `TX_EN`，不再驱动测点 |
+| RX 重挂测点 | PA6，`RF_Rx` 调用期间为高（两种板都保留） |
+| AT2401C `TX_EN` / `RX_EN`（PA 板） | PA5 / PA4，高有效，由协议栈自动翻转 |
 
-默认 `gw_id=1`，2450 MHz、1M PHY、0 dBm、AUTO、白化开启，接入地址 `0x71764129`、CRC 初值
-`0x123456`。这些参数与节点一致。`APP_GW_ID` 可用构建预处理宏覆盖，USB 序列号也按该 ID 生成（`BMIGW001` 至 `BMIGW254`）。运行期 `SET_GW_CFG` 尚无
+默认 `gw_id=1`，2450 MHz、1M PHY、AUTO、白化开启，接入地址 `0x71764129`、CRC 初值
+`0x123456`；芯片发射功率原板 0 dBm、PA 板 +4 dBm（`BLE_TX_POWER` 可覆盖）。接入地址与 CRC 初值等参数与节点一致。`APP_GW_ID` 可用构建预处理宏覆盖，USB 序列号也按该 ID 生成（`BMIGW001` 至 `BMIGW254`）。运行期 `SET_GW_CFG` 尚无
 完整线格式，明确返回不支持，不写 DataFlash。
+
+## PA 版本（AT2401C）
+
+新 PCBA 在 CH592F 之后加了 AT2401C 前端，除 PA 使能外与原有网关板一致（USB PB10/PB11、BOOT 键、
+PA9 UART1、PA10/PA11 32.768 kHz 晶振、DCDC）。构建 `BOARD=pa` 改变的有三处：板级初始化（PA/LNA 使能脚）、芯片发射功率档（原板 0 dBm → PA 板 +4 dBm）
+和 `rssi` 上报补偿。协议、主机帧、队列与 ACK 时序与 v1.5 完全相同，节点侧无需任何改版。
+
+- 网关在 AUTO 模式只收不发，ACK 由协议栈硬件自动应答，软件没有“ACK 即将发出”的时刻。
+  因此 `TX_EN`/`RX_EN` 不能按包手动翻转，只能由厂商 `BLE_PAControlInit()` 在 RF 使能处自动处理，
+  注册函数在 `app/pa_control.c`，调用点在 `app/radio.c` 的 `gateway_radio_init()`：`RF_RoleInit()` 之后、
+  `RF_Config()` 之前；`RF_Config()` 失败时先 `gateway_pa_off()` 再停住等看门狗。
+- `RX_EN`(PA4) 在接收窗口常开，功放只在 ACK 期间导通；不监听（背压、120 s 校准窗口）时主动清两个使能脚，
+  避免 LNA 空耗。`BLE_RegInit()` 之后重新登记一次前端控制。
+- 芯片侧 `BLE_TX_POWER` 默认 +4 dBm。若按 AT2401C 标称增益 +20 dB 估算，EIRP ≈ 24 dBm，**已超过**
+  国内 2.4 GHz 的 20 dBm（100 mW）限值；要合规应把芯片侧压到 0 dBm（EIRP ≈ 20 dBm），或用频谱仪
+  实测前端增益后再定档。提高覆盖前必须同时确认 SRRC/CE 结论，不要只改这个宏。
+- LNA 会抬高上报的 `rssi`。PA 构建默认按 `PA_RSSI_OFFSET=-13`（dB，AT2401C 典型 RX 增益）扣回，
+  使新旧网关的链路数据可比；实测增益不同就用 `PA_RSSI_OFFSET=<负值>` 覆盖，填 0 则上报原始值。
+  补偿是 `int8_t` 直接相加、**不钳位**：原始 `rssi` 很低（例如 -125）时可能回绕成正数，长距离弱信号
+  场景要按实测确认，必要时在 `radio.c` 加下限保护。
+- 原板 PA5 的 RF 回调测点与 `TX_EN` 冲突，PA 构建不再驱动它；PA6 的重挂测点保留。
+
+PA 板接板验收除原有项目外，还需：
+
+1. 示波器同时看 PA5/PA4 与 RF 活动：接收时 RX_EN 高、ACK 期间 TX_EN 高且两者不重叠；
+   空闲、背压和 120 s 校准窗口内两脚都为低（注意用 `LOG=1` 版看 UART1 日志判断校准时刻）。
+2. 频谱仪测 ACK 输出功率与谐波，确认实际 EIRP 与 `PA_RSSI_OFFSET` 标定值。
+3. 用固定距离对比原板与 PA 板的 `GW_STATUS`/`rssi` 与节点 `STATUS` 的 `ack_rssi_avg`：应看到上行增益，
+   且扣除补偿后与原板同量级。
 
 ## 队列与确认的实际边界
 
 `GW_QUEUE_SLOTS=8`，不是方案估计的16槽：官方链接脚本只开放26 KiB RAM，需要同时保留6 KiB
 厂家协议栈堆、完整RAM运行路径与2 KiB栈。队列使用单调计数器，可物理保存8包；正常重挂要求
 至少2个空槽，通常在积压7包时停止接收。按3200 Hz、35样本/包计算，这约为76.6 ms；STATUS、POLL
-也占队列，实际缓存时间更短。预留 2 KiB 栈后，发布版余 448 B，日志版余 440 B。
+也占队列，实际缓存时间更短。预留 2 KiB 栈后，原板发布版余 448 B、日志版余 440 B；PA 板发布版余 416 B、日志版余 408 B。
 
 - 只转发合法的 v1 DATA、STATUS、POLL；CRC或格式错误不进入确认表。
 - 只有已放入队列的 DATA/STATUS 才加入最近8条确认表，最新项在前。POLL不占用序号，也不被确认。
@@ -82,13 +115,16 @@ Flash持久化或普通Flash任务。
 sh "tests/gateway/run.sh"
 ```
 
-宿主测试共 4 套（均含 ASan/UBSan）：`test_gateway`、`test_host_link`、`test_usb` 与 `test_radio`，
+宿主测试共 5 个可执行（均含 ASan/UBSan）：`test_gateway`、`test_host_link`、`test_usb`、`test_radio`，
+以及用 `-DGW_BOARD_PA=1` 重编的 `test_radio_pa`，
 覆盖队满不误确认、队列计数器回绕、最新 8 条确认、重复包、新 boot / POLL 清确认表与旧命令、
 同节点命令覆写与即时刷新 ACK、命令确认、CRC/超长帧重同步、10 万组时间换算、主动背压重挂延迟统计，
 以及 CDC 分包末块提交、断线重发、HELLO/TIME_RESP。
 `test_usb` 直接编译 USB ISR 与控制端点代码，按手册模拟 SETUP 不更新 RX_LEN、旧 IN/OUT 与新 SETUP
 共存时的两次写 1 清零，以及旧 EP0 IN 重填缓冲时保护新请求。另覆盖设备描述符、配置描述符 64+3 B
 分包、SET_ADDRESS 状态阶段后生效、CDC 类请求及 Bulk 收发。
+`test_radio_pa` 另外验证：PA 只登记一次、`rssi` 按 `PA_RSSI_OFFSET` 扣回、PA5 不再作为回调测点被驱动、
+背压与 120 s 校准窗口内两个使能脚都关掉、`BLE_RegInit()` 后重新登记前端控制。
 
 ## 串口出现但文本窗口没有数据时
 
@@ -104,8 +140,13 @@ v1.2 已在 macOS 实际枚举并收到节点三轴样本，普通文本窗口�
 wchisp -u flash "firmware/build/gateway/gateway.hex"
 # 如需查看 UART1 启动日志，可刷写日志版：
 wchisp -u flash "firmware/build/gateway-debug/gateway.hex"
+# 带 AT2401C 前端的板子刷 PA 版：
+wchisp -u flash "firmware/build/gateway-pa/gateway-pa.hex"
+wchisp -u flash "firmware/build/gateway-pa-debug/gateway-pa.hex"
 ```
 
+上面四个路径都是本地构建产物（`build/`、`firmware/build/` 不入库），需先跑
+`make -C "firmware" ROLE=gateway BOARD=pa all`（日志版加 `LOG=1`）生成。
 该命令下载、校验代码 Flash 后自动复位；`-u` 选择 USB 传输，不操作 DataFlash/EEPROM。
 刷写成功后松开 BOOT，拔插一次 USB，正常上电启动应用。按住 BOOT 上电会再次进入 ROM 下载程序。
 
@@ -127,10 +168,11 @@ v1.2 按 CH592DS1 第 17 章（纸页 107–108）修正控制器语义：`RB_UI
 IN 回调重填共享 DMA 缓冲将其覆盖。
 
 如果仍未出现设备，将 USB 转串口 RX 接 PA9、GND 共地，设置 115200 8N1。
-日志依次为版本/网关编号、`BLE init`、`HAL init (32K)`、`CDC init`、`CDC ready`、`RF init`。
+日志依次为版本/网关编号、`BLE init`、`HAL init (32K)`、`CDC init`、`CDC ready`、`RF init`；
+PA 版启动标识为 `gateway-pa`，最后一段为 `RF init (PA)`。
 `CDC ready` 表示 USB 外设初始化完成。若最后停在 `HAL init (32K)`，检查 PA10/PA11 的外部
 32.768 kHz 晶振：当前构建 `CLK_OSC32K=0`，厂家 RTC 初始化会等待其时钟，USB 初始化尚未执行。
 
-后续仍需验证：USB反复拔插、约91包/秒连续接收、PA5/PA6重挂延迟、RF AUTO回调行为、
-受控校准时的重传、1秒无回调恢复及24小时稳定性。PC暂停读取时应看到节点重试/缓存计数上升，
+后续仍需验证：USB反复拔插、约91包/秒连续接收、PA6 重挂延迟、RF AUTO回调行为、
+受控校准时的重传、1秒无回调恢复及24小时稳定性；PA 板另加示波器+频谱仪的前端时序与功率项。PC暂停读取时应看到节点重试/缓存计数上升，
 恢复后能从原始日志重组，超出缓存的缺口需与节点计数对齐。

@@ -34,6 +34,8 @@ v1.6 起节点静置后自动休眠。收到所选节点的休眠状态时，页
 - 统计面板常驻实际连续点数、窗口时长和近 60 s 缺样率；不足目标窗口时标注实际时长，缺样 >5% 显示 `⚠` 并降灰。
 - 振动频谱默认叠加 X、Y、Z 三轴，三条曲线共用频率和幅度坐标。点击 `X`、`Y`、`Z` 可独立隐藏或显示曲线，表中保留各轴主频和峰值幅度。
 - 三轴频谱使用同一连续段和采样配置，取最近不超过 4,096 点的最大 2 次幂后缀，去均值后加 Hann 窗，按窗相干增益校正单边峰值幅度。主频为最大非 DC 谱线中心，分辨率为 `采样率 / FFT 点数`。
+- 右上角的明暗按钮切换浅色/深色主题，选择保存在本机；未手动选择时跟随系统配色。波形、频谱和三维模型会同步换色。
+- 姿态面板把加速度方向解算为重力朝向：X、Y、Z 轴绑定在三维传感器模型上实时旋转。读数给出 X/Y 轴相对水平面的仰角、Z 轴相对竖直方向的倾角与合加速度；拖动模型可变换观察角度，双击复位。加速度含明显运动分量时标记为运动干扰，样本停更或断开后保留最后姿态。仅有加速度时偏航角不可观测。
 
 ## 数字的含义
 
@@ -64,9 +66,9 @@ make test-web
 ```
 
 `build.cjs` 只用 Node 标准库，将 `client.template.html`、`src/style.css`、`src/app.js`、
-`src/analysis.js`、`src/timeline.js` 和 `js/protocol.js` 内联为 `index.html`。协议、计算和时间/趋势模块也可用 CommonJS 单独测试。
+`src/analysis.js`、`src/timeline.js`、`src/attitude.js` 和 `js/protocol.js` 内联为 `index.html`。协议、计算、时间/趋势与姿态模块也可用 CommonJS 单独测试。
 不需 npm 安装。协议偏移依据 `firmware/common/proto.h` 和 `docs/02_无线协议.md`。
 
-`make test-web` 在 Node 中运行协议、计算和时间轴单元测试。需要检查页面交互时，用 Edge 打开生成的 HTML。
+`make test-web` 在 Node 中运行协议、计算、时间轴与姿态解算单元测试。需要检查页面交互时，用 Edge 打开生成的 HTML。
 
-历史实测记录见 [网关采样 CSV](../build/web-gateway-live.csv)、[连接界面](../build/web-gateway-live.png) 和 [M1 实施记录](../docs/12_上位机振动指标改造方案.md#11-实施记录)。
+历史实测记录见 `build/web-gateway-live.csv`、`build/web-gateway-live.png`（本地诊断产物，`build/` 不入库）和 [M1 实施记录](../docs/12_上位机振动指标改造方案.md#11-实施记录)。

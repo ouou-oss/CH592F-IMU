@@ -14,6 +14,7 @@ open -a "Microsoft Edge" "web/index.html"
 
 HTML 为独立文件，无 CDN、无安装步骤，也不需要运行服务。Safari、Firefox 当前不能通过此页面连接串口。
 页面自动设置 DTR，发现节点后显示三轴波形、直流/振动 AC RMS/峰值/波峰因数、去直流 Hann 频谱和节点健康状态。
+右上角按钮切换明暗主题，选择保存在本机。姿态面板用加速度方向解算重力朝向，把 X/Y/Z 轴绑定在三维传感器模型上实时旋转；仅有加速度时偏航角不可观测。
 节点上电后默认待机。连接网关并选中节点后，点击「恢复采集」。连续静置 10 秒后，页面弹出休眠提示。晃动设备会在原会话继续采集。
 横轴默认使用**北京时间（UTC+8）**，由节点采样时钟与电脑时间对齐估算。单击波形放置定位线，滚轮缩放，左键拖动平移。按住 Shift 再拖动会标出蓝色选区，松手放大。点「回到最新」恢复实时跟随。
 “导出 CSV”保存当前会话的最新缓存，包含原始 LSB 与未舍入的 g 值。
@@ -27,17 +28,22 @@ make test
 make firmware
 make -C "firmware" ROLE=sensor LOG=1
 make -C "firmware" ROLE=gateway LOG=1
+make -C "firmware" ROLE=gateway BOARD=pa all   # CH592F + AT2401C 前端板网关
 ```
 
 默认使用已安装的 MounRiver GCC 8.2.0，路径配置在 `firmware/Makefile`，可通过 `TOOLCHAIN` 覆盖。
-两种固件输出 `.elf`、`.hex`、`.bin`、`.map`；日志版单独放在 `*-debug` 目录。
-`make test` 运行公共协议、节点、网关的 C 测试、离线网页解码器和串口网页协议/分析测试；需要 C 编译器和 Node.js。
+各固件输出 `.elf`、`.hex`、`.bin`、`.map`；日志版单独放在 `*-debug` 目录。PA 板产物独立在
+`firmware/build/gateway-pa/`，与原板构建共用同一份 `gateway/app` 源码。
+`make test` 运行公共协议、节点、网关的 C 测试、离线网页解码器和串口网页协议/分析/姿态解算测试；需要 C 编译器和 Node.js。
 固件链接检查使用系统 Python 3 标准库。
 
 | 角色 | 当前版本 | 下载文件 | 接线/运行说明 |
 |---|---|---|---|
 | 节点 | v1.7（默认上电待机） | `firmware/build/sensor/sensor.hex` | [节点说明](firmware/sensor/README.md) |
 | 网关 | v1.5 | `firmware/build/gateway/gateway.hex` | [网关说明](firmware/gateway/README.md) |
+| 网关（AT2401C PA 板） | v1.5 | `firmware/build/gateway-pa/gateway-pa.hex` | [PA 版本](firmware/gateway/README.md#pa-版本at2401c) |
+
+表里的 HEX 路径是**本地构建产物**：`build/`、`firmware/build/`、`data/` 都不入库，克隆后需先跑上面的构建命令生成。
 
 MounRiver 可导入工程在 [ide/mounriver](ide/mounriver/README.md)，与命令行共用同一 Makefile。
 构建不会自动下载、擦除设备或改动厂家示例。
@@ -45,20 +51,23 @@ MounRiver 可导入工程在 [ide/mounriver](ide/mounriver/README.md)，与命�
 ## 接线与 USB 数据接口
 
 节点接线：SPI0 为 PA12/13/14/15，BMI323 INT1 为 PA4，外部 32.768 kHz 晶振为 PA10/11。
-节点 PA8 驱动状态灯，UART1 改用 PB13 TX / PB12 RX，115200 8N1。两端默认 2450 MHz、1M、0 dBm、
-access address `0x71764129`、CRCInit `0x123456`。
+节点 PA8 驱动状态灯，UART1 改用 PB13 TX / PB12 RX，115200 8N1。两端默认 2450 MHz、1M、
+access address `0x71764129`、CRCInit `0x123456`；芯片发射功率节点与原板网关 0 dBm，PA 板网关 +4 dBm。
 
 网关 USB D−/D+ 为 PB10/PB11，枚举为 `BMI323 Gateway`（VID:PID `1A86:8040`）。
+PA 板在此之外用 PA5=AT2401C `TX_EN`、PA4=`RX_EN`（高有效，由协议栈自动翻转），原板的 PA5 回调测点随之取消。
 主机打开 CDC 数据口并置 DTR 后，网关发送带 CRC 的二进制帧。帧格式、命令及时间字段见
 [网关与上位机协议](docs/03_网关与上位机.md)，十六进制帧可用 [离线手册](docs/site/index.html) 中的解码器检查。
 
-既有采集记录、CSV 和 Parquet 文件保留在 `data/`，实板诊断记录保留在 `build/`。
+既有采集记录、CSV 和 Parquet 文件保留在 `data/`，实板诊断记录保留在 `build/`；这两个目录都在 `.gitignore` 中，
+不在版本库里，文档里指向它们的链接只在本地有效。
 
 ## 当前容量与验收边界
 
 - 节点默认 **24 槽**，按每包 35 点最多缓存 840 点（3.2 kHz 下约 **0.2625 s**）。STATUS 也占槽。
 - 网关 **8 个物理槽**，正常反压门限最多积压 7 包（约 76.6 ms）；保留厂家 6 KiB BLE 堆及每工程 2 KiB 栈。
-- 固件预留 2 KiB 栈后，v1.7 节点发布版/日志版余 **696 / 676 B**，v1.5 网关发布版/日志版余 **448 / 440 B**。历史基线见 [接板验收文档](docs/11_软件实现与接板验收.md)。
+- 固件预留 2 KiB 栈后，v1.7 节点发布版/日志版余 **696 / 676 B**，v1.5 网关发布版/日志版余 **448 / 440 B**，
+  PA 板网关余 **416 / 408 B**。历史基线见 [接板验收文档](docs/11_软件实现与接板验收.md)。
 - 网页的近 60 s 缺样取 DATA 编号缺口和 STATUS 的 FIFO／缓存丢样增量之和中的较大值。V1 混合故障无法逐样本唯一归因，长采集停顿仍可能出现未知丢样量。
 - 远程 REBOOT 当前明确拒绝，避免命令重复导致重启循环。v1.5 待机电流、启停循环、时间精度、现场覆盖及 24 h 完整性仍需接板验收。
 

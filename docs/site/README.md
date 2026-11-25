@@ -21,7 +21,7 @@ CRC 采用 CRC-16/CCITT-FALSE：poly=0x1021、init=0xFFFF、refin/refout=false�
 
 ## 维护与测试
 
-- `index.html`：运行流程、通信说明、可靠性、时间与现场检查。
+- `index.html`：运行流程、通信说明、可靠性、时间与现场检查，以及「协议工作台」解码器（粘贴一帧十六进制，拆开看字段与样本）。
 - `css/style.css`：本地系统字体、响应式布局与打印样式。
 - `js/protocol.js`：与 02 / 03 保持一致的字段、命令与主机类型。
 - `js/codec.js`：CRC、严格长度校验、编解码和示例生成。

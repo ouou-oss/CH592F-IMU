@@ -4,8 +4,8 @@
 启用 UART1 每秒累计统计；发布版默认不打印。构建参数和下载方法见根目录说明。
 
 当前节点固件为 **v1.7**：发布版 `firmware/build/sensor/sensor.hex`，日志版
-`firmware/build/sensor-debug/sensor.hex`。两目录中保留的历史版本 HEX
-（`sensor-v1.4.hex`、`sensor-v1.3.hex`、`sensor-v1.1.hex`）仅作回退留档。
+`firmware/build/sensor-debug/sensor.hex`（`build/` 不入库，需本地 `make firmware` 生成）。
+本地两目录中还留有历史版本 HEX（`sensor-v1.4.hex`、`sensor-v1.3.hex`、`sensor-v1.1.hex`）作回退留档，同样不在版本库里。
 远程启停需配合 **v1.5 网关**。在网页观测台选中节点后，点击「恢复采集」或「停止采集」。操作步骤见 [网页观测台说明](../../web/README.md)，固件行为见 [远程启停与低功耗待机方案](../../docs/13_远程启停与低功耗待机方案.md)。
 
 ## 低功耗待机与空闲降耗
@@ -97,7 +97,7 @@ CMD_RESP result=2（不支持）。当前尚未实现复位前的确认闭环，
 
 ## 本机与硬件验收
 
-本机纯 C 测试源码位于 `tests/sensor/`（共 7 套）：`test_sensor.c` 覆盖时间回绕、FIFO 缺样、
+本机纯 C 测试源码位于 `tests/sensor/`（8 个源文件、编出 9 个可执行，`Makefile` 的 `test-sensor` 全跑）：`test_sensor.c` 覆盖时间回绕、FIFO 缺样、
 新段、长暂停、RTC 锚点、队列满、误确认、确认超时和 seq 回绕；
 `test_radio.c` 覆盖启动握手（含跳过旧命令）、待机心跳不死循环、停采排空超时、持续入队不打断退避及到期恢复发送；
 `test_idle.c` 覆盖 RTC 回绕、临界截止点、PA4 竞态及 真睡眠门禁、RTC 触发竞态与看门狗切换；
@@ -105,7 +105,9 @@ CMD_RESP result=2（不支持）。当前尚未实现复位前的确认闭环，
 `test_boot.c` 覆盖 boot 页切换、
 破损记录及写入/擦除中断电恢复；`test_command.c` 覆盖命令幂等、`STREAM_CTRL` 状态切换和 REBOOT 重复
 下发不会复位；`test_sampler.c` 直接运行采集器，覆盖读取 FIFO 水位期间新增样本、
-真实缺样、传感器时间及 RTC 回绕，防止假 2.56 s 锚点和假 8192 样本缺口。
+真实缺样、传感器时间及 RTC 回绕，防止假 2.56 s 锚点和假 8192 样本缺口；
+`test_board.c` 覆盖引脚与 UART1 重映射（PA8 状态灯、PB13/PB12），`test_startup.c` 另按
+`SENSOR_STANDBY_SLEEP=0` 再编一份 `test_sensor_nosleep`。
 射频活动窗口从 RF_Tx 到 RF_Shut 全程在 RAM 中。
 以下项目需接板执行：1 h 无采集 GAP、0.2 s/2 s 断链、150 ms FIFO 暂停、
 TX_FINISH 行为、重新挂接间隔、24 h 完整性及沿线 10 圈覆盖测试。
