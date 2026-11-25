@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="BMI323 网关实时串口波形与频谱分析。离线单文件，无需安装。">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 36'%3E%3Crect width='36' height='36' rx='8' fill='%23171e23'/%3E%3Cpath d='M5 18h6l3-9 5 17 4-12 3 4h5' fill='none' stroke='%23b5ebc7' stroke-width='2'/%3E%3C/svg%3E">
+  <title>BMI323 · 振动观测台</title>
+  <link rel="stylesheet" href="data:text/css;charset=utf-8;base64,/*__STYLE__*/">
+</head>
+<body>
+  <div class="workspace">
+    <header class="masthead">
+      <div class="brand">
+        <svg class="brand-mark" viewBox="0 0 36 36" fill="none" aria-hidden="true"><rect x=".5" y=".5" width="35" height="35" rx="10" stroke="currentColor" stroke-opacity=".28"/><path d="M6 19h5l3-9 5 17 4-13 3 5h4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <div><div class="eyebrow">BMI323 <span class="brand-divider">/</span> CH592F</div><h1>振动观测台</h1></div>
+        <span class="local-label">本地运行</span>
+      </div>
+      <div class="connection-actions">
+        <span id="connectionBadge" class="badge" role="status"><i></i><span>未连接</span></span>
+        <button id="connectButton" class="button primary"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M7 2v5m6-5v5M5 7h10v3a5 5 0 0 1-10 0V7Zm5 8v3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg><span>连接网关</span></button>
+      </div>
+    </header>
+
+    <div id="notice" class="notice" role="status"><span class="notice-dot"></span><span id="noticeText">连接 USB 网关后，点击“连接网关”，选择 BMI323 Gateway。请使用 Chrome 或 Edge。</span></div>
+
+    <section class="toolbar" aria-label="采集会话与操作">
+      <div class="node-controls">
+        <div class="session-controls">
+          <label for="sessionSelect">采集会话</label><select id="sessionSelect" disabled><option value="">等待节点数据</option></select>
+          <div class="stream-actions" role="group" aria-label="节点采集控制" aria-describedby="streamStatus">
+            <button id="stopStreamButton" class="button small" type="button" disabled>停止采集</button>
+            <button id="startStreamButton" class="button small" type="button" disabled>恢复采集</button>
+          </div>
+        </div>
+        <div class="node-meta">
+          <span id="streamStatus" class="stream-status" role="status">连接网关后可控制采集</span>
+          <span id="configLabel" class="muted">— Hz · ±— g</span>
+        </div>
+      </div>
+      <div class="view-actions"><span id="bufferLabel" class="muted">滚动保留最近 96,000 点 / 会话</span><button id="exportButton" class="button small" disabled><svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 2v8m-3-3 3 3 3-3M3 10v3h10v-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>导出 CSV</button></div>
+    </section>
+
+    <section class="metrics" aria-label="实时接收指标">
+      <div class="metric"><span class="metric-label">采样率 <span class="metric-note">配置值</span></span><div><strong id="rateValue">—</strong><span class="unit">Hz</span></div><span id="rateDetail" class="metric-detail">等待采样配置</span></div>
+      <div class="metric"><span class="metric-label">无线信号</span><div><strong id="rssiValue">—</strong><span class="unit">dBm</span><span id="signalBars" class="signal-bars"><i></i><i></i><i></i><i></i></span></div><span id="rssiDetail" class="metric-detail">等待无线数据</span></div>
+      <div class="metric"><span class="metric-label">已收样本 <span class="metric-note">去重后</span></span><div><strong id="samplesValue">0</strong><span class="unit">点</span></div><span id="samplesDetail" class="metric-detail">按节点 / boot 独立统计</span></div>
+      <div class="metric"><span class="metric-label">接收区间缺样</span><div><strong id="missingValue">0</strong><span class="unit">点</span></div><span id="missingDetail" class="metric-detail">首末已收编号之间的缺口</span></div>
+    </section>
+
+    <main>
+      <div class="chart-grid">
+        <section class="panel waveform-panel" aria-labelledby="waveTitle">
+          <div class="panel-head"><div><div class="eyebrow">TIME DOMAIN</div><h2 id="waveTitle">三轴加速度</h2></div><span id="latestTimeLabel" class="latest-time">等待采样时间</span></div>
+          <div class="wave-toolbar"><label>时间<select id="timeBasis"><option value="beijing" selected>北京时间</option><option value="node">节点时钟</option><option value="relative">距最新样本</option></select></label><label>显示范围<select id="timeWindow"><option value=".25">250 ms</option><option value="1" selected>1 秒</option><option value="3">3 秒</option><option value="10">10 秒</option><option value="30">30 秒</option><option value="60">1 分钟</option><option value="300">5 分钟</option><option value="600">10 分钟</option><option value="all">全部趋势</option><option value="custom">自定义</option><option value="zoom" hidden>手动缩放</option></select></label><label id="customWindowLabel" hidden><input id="customTimeWindow" type="number" min="0.05" max="3600" step="any" value="20" aria-label="自定义显示范围秒数">秒</label><button id="followWaveButton" class="button small" type="button" disabled>回到最新</button><label class="amplitude-control"><span class="sr-only">纵轴范围</span><select id="amplitudeScale"><option value="auto">自动量程</option><option value="2">±2 g</option><option value="4">±4 g</option><option value="8">±8 g</option><option value="16">±16 g</option></select></label></div>
+          <div class="chart-caption"><div class="legend"><label class="axis-x"><input type="checkbox" data-axis="x" checked><span></span>X</label><label class="axis-y"><input type="checkbox" data-axis="y" checked><span></span>Y</label><label class="axis-z"><input type="checkbox" data-axis="z" checked><span></span>Z</label></div><div class="wave-readouts"><span id="waveMarkerLabel" class="wave-marker-label" hidden></span><span id="waveState" class="chart-state">等待信号</span></div></div>
+          <div class="canvas-wrap"><canvas id="waveCanvas" tabindex="0" aria-describedby="timelineHint" aria-label="三轴实时加速度波形，横轴为北京时间 UTC+8，纵轴单位 g"></canvas><div id="waveEmpty" class="chart-empty"><svg viewBox="0 0 80 34" fill="none" aria-hidden="true"><path d="M1 17h15l6-9 9 20L43 3l9 23 7-9h20" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg><strong id="waveEmptyTitle">等待第一组样本</strong><span id="waveEmptyHint">连接网关并开始节点采集</span></div></div>
+          <div class="panel-foot"><span id="timelineHint">单击定位 · 拖动平移 · 滚轮缩放 · Shift + 拖动框选</span><span id="waveWindowLabel">1 s 范围</span></div>
+          <div class="history-label"><span id="waveAxisLabel">北京时间 UTC+8 · 电脑对齐估算</span><span id="historyLabel">原始波形保留 96,000 点，运行趋势保留最近 1 小时。</span></div>
+        </section>
+
+        <section class="panel spectrum-panel" aria-labelledby="spectrumTitle">
+          <div class="panel-head"><div><div class="eyebrow">FREQUENCY DOMAIN</div><h2 id="spectrumTitle">振动频谱</h2></div></div>
+          <div class="spectrum-summary">
+            <table aria-label="三轴频谱主频与峰值">
+              <thead><tr><td></td>
+                <th scope="col"><button id="spectrumToggle-x" class="spectrum-toggle axis-x" type="button" aria-label="显示 X 轴频谱" aria-pressed="true">X</button></th>
+                <th scope="col"><button id="spectrumToggle-y" class="spectrum-toggle axis-y" type="button" aria-label="显示 Y 轴频谱" aria-pressed="true">Y</button></th>
+                <th scope="col"><button id="spectrumToggle-z" class="spectrum-toggle axis-z" type="button" aria-label="显示 Z 轴频谱" aria-pressed="true">Z</button></th>
+              </tr></thead>
+              <tbody>
+                <tr><th scope="row">主频 <small>Hz</small></th><td id="spectrumFrequency-x">—</td><td id="spectrumFrequency-y">—</td><td id="spectrumFrequency-z">—</td></tr>
+                <tr><th scope="row">峰值 <small>g</small></th><td id="spectrumAmplitude-x">—</td><td id="spectrumAmplitude-y">—</td><td id="spectrumAmplitude-z">—</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="canvas-wrap">
+            <canvas id="spectrumCanvas" aria-label="三轴单边峰值幅度谱，横轴 Hz，纵轴 g"></canvas>
+            <div id="spectrumEmpty" class="chart-empty compact"><strong>等待连续样本</strong><span>分析最近连续段，最多 4,096 点</span></div>
+            <div id="spectrumHidden" class="chart-empty compact" hidden><strong>频谱曲线已隐藏</strong><span>点击 X、Y 或 Z 显示对应曲线</span></div>
+          </div>
+          <div class="panel-foot"><span>去直流 · Hann 窗</span><span id="fftDetail">FFT — 点</span></div>
+        </section>
+      </div>
+
+      <div class="details-grid">
+        <section class="panel stats-panel" aria-labelledby="statsTitle">
+          <div class="panel-head stats-head"><h2 id="statsTitle">时域统计</h2><span id="statsValidity" class="stats-validity">0.00 s（不足 2 s） · 缺样 —</span></div>
+          <div class="stats-toolbar"><label>统计窗口 <select id="statisticsWindow" aria-label="统计窗口"><option value="1">1 s</option><option value="2" selected>2 s</option><option value="5">5 s</option><option value="10">10 s</option></select></label></div>
+          <div class="stats-content">
+            <section class="stats-group" aria-labelledby="dcTitle"><h3 id="dcTitle">直流 / 重力</h3><div class="dc-values"><span><b class="axis-x">X</b> <span id="dc-x">—</span></span><span><b class="axis-y">Y</b> <span id="dc-y">—</span></span><span><b class="axis-z">Z</b> <span id="dc-z">—</span></span></div></section>
+            <section class="stats-group" aria-labelledby="acTitle"><h3 id="acTitle">振动（AC）</h3><div class="table-scroll"><table><thead><tr><th scope="col">轴</th><th scope="col">振动 RMS</th><th scope="col">波峰因数</th><th scope="col">振动峰值</th><th scope="col">峰峰值</th></tr></thead><tbody id="statsBody"><tr data-stats-axis="x"><th scope="row"><span class="axis-dot x"></span>X</th><td class="vibration-rms">—</td><td>—</td><td>—</td><td>—</td></tr><tr data-stats-axis="y"><th scope="row"><span class="axis-dot y"></span>Y</th><td class="vibration-rms">—</td><td>—</td><td>—</td><td>—</td></tr><tr data-stats-axis="z"><th scope="row"><span class="axis-dot z"></span>Z</th><td class="vibration-rms">—</td><td>—</td><td>—</td><td>—</td></tr></tbody></table></div></section>
+          </div>
+          <div class="stats-foot"><p id="statsWindow">最近连续段 · 等待数据</p><p id="statsQuality" title="缺样 = DATA 采样编号缺口 + STATUS FIFO 丢样增量 + 缓存丢样增量；不同来源可能重叠。">缺样率按近 60 s · 等待数据</p><p>缺口与配置变化处断开分析 · 趋势按 1 s 桶</p></div>
+        </section>
+
+        <section class="panel health-panel" aria-labelledby="healthTitle">
+          <div class="panel-head"><h2 id="healthTitle">链路与节点</h2><span id="healthBadge" class="health-badge">等待 STATUS</span></div>
+          <dl class="health-grid"><div><dt>网关 / 节点固件</dt><dd id="firmwareValue">— / —</dd></div><div><dt>节点温度</dt><dd id="temperatureValue">— °C</dd></div><div><dt>主机 CRC / 格式错误</dt><dd id="crcValue">0 / 0</dd></div><div><dt>重复包 / 乱序包</dt><dd id="duplicatesValue">0 / 0</dd></div><div><dt>FIFO 丢样 <small>本次增量</small></dt><dd id="fifoValue">—</dd></div><div><dt>缓存丢样 <small>本次增量</small></dt><dd id="ringValue">—</dd></div></dl>
+          <div id="statusBaseline" class="baseline-note">收到首个 STATUS 后，以其累计计数作为本次观测基线。</div>
+          <details class="more-details"><summary>更多诊断</summary><dl id="diagnosticsList" class="diagnostics-list"></dl></details>
+        </section>
+      </div>
+    </main>
+
+    <footer><span><span class="footer-dot"></span><span id="footerStatus">串口未连接</span></span><span>数据仅在本机处理 <span class="subtle">/</span> CSV 为原始缓存 · 含北京时间估算</span><button id="helpButton" class="text-button">使用说明</button></footer>
+  </div>
+
+  <dialog id="helpDialog"><div class="dialog-head"><h2>连接与分析</h2><button id="closeHelpButton" class="button small">关闭</button></div><ol><li>用 Chrome 或 Edge 打开这个 HTML，连接网关 USB 数据口。</li><li>点击“连接网关”，在串口列表里选择 BMI323 Gateway；页面会自动设置 DTR 并接收。</li><li>默认显示北京时间（UTC+8）。节点采样时钟按电脑接收时间对齐，包含传输延迟，绝对时间精度尚未标定。</li><li>单击波形放置定位线，图上方显示所选时刻。左键拖动平移，滚轮以鼠标所在时刻为中心缩放。按住 Shift 再用左键拖动会标出蓝色选区，松开鼠标放大选区，按 Esc 取消。点击“回到最新”恢复跟随，节点采集继续进行。</li><li>CSV 导出当前会话的原始缓存，最多 96,000 点，包含节点秒数、北京时间估算和原有相对时间。</li></ol><p>节点时钟使用 DATA 中的真实锚点；首次连接前完整的 RTC 天数/时钟周期无法由协议确定。按节点和 boot 分开查看。缺口或分段处断开曲线；频谱始终只分析最近连续段的原始样本，最多 4,096 点。</p><p>STATUS 丢样从本次首个状态包起算。关闭或刷新页面会丢失未导出的缓存与趋势。</p><p id="browserHelp">如果串口无法打开，请退出占用串口的程序，确认设备正常上电后重试。</p></dialog>
+  <dialog id="sleepDialog" class="sleep-dialog" aria-labelledby="sleepDialogTitle" aria-describedby="sleepDialogMessage">
+    <div class="sleep-dialog-icon" aria-hidden="true">☾</div>
+    <h2 id="sleepDialogTitle">节点已休眠</h2>
+    <p id="sleepDialogMessage">晃动设备即可继续采集。</p>
+    <button id="closeSleepButton" class="button primary" type="button" autofocus>知道了</button>
+  </dialog>
+  <script src="data:text/javascript;charset=utf-8;base64,/*__PROTOCOL__*/"></script>
+  <script src="data:text/javascript;charset=utf-8;base64,/*__ANALYSIS__*/"></script>
+  <script src="data:text/javascript;charset=utf-8;base64,/*__TIMELINE__*/"></script>
+  <script src="data:text/javascript;charset=utf-8;base64,/*__APP__*/"></script>
+</body>
+</html>

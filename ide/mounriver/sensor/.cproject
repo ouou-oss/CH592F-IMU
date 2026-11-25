@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<?fileVersion 4.0.0?>
+<cproject storage_type_id="org.eclipse.cdt.core.XmlProjectDescriptionStorage">
+  <storageModule moduleId="org.eclipse.cdt.core.settings">
+    <cconfiguration id="bmi323.sensor">
+      <storageModule buildSystemId="org.eclipse.cdt.core.defaultConfigDataProvider" id="bmi323.sensor" moduleId="org.eclipse.cdt.core.settings" name="Makefile">
+        <externalSettings/>
+        <extensions>
+          <extension id="org.eclipse.cdt.core.ELF" point="org.eclipse.cdt.core.BinaryParser"/>
+          <extension id="org.eclipse.cdt.core.GCCErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+          <extension id="org.eclipse.cdt.core.GmakeErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+        </extensions>
+      </storageModule>
+      <storageModule moduleId="org.eclipse.cdt.core.pathentry">
+        <pathentry kind="src" path="app"/>
+        <pathentry kind="src" path="common"/>
+        <pathentry kind="inc" path="" include="app"/>
+        <pathentry kind="inc" path="" include="common"/>
+        <pathentry kind="inc" path="" include="sdk/SRC/StdPeriphDriver/inc"/>
+        <pathentry kind="inc" path="" include="sdk/SRC/RVMSIS"/>
+        <pathentry kind="inc" path="" include="sdk/BLE/LIB"/>
+        <pathentry kind="inc" path="" include="sdk/BLE/HAL/include"/>
+        <pathentry kind="mac" path="" name="CLK_OSC32K" value="0"/>
+        <pathentry kind="mac" path="" name="DCDC_ENABLE" value="1"/>
+        <pathentry kind="out" path="output"/>
+      </storageModule>
+    </cconfiguration>
+  </storageModule>
+</cproject>

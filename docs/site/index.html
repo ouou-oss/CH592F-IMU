@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="CH592F 与 BMI323 料架振动采集系统：运行流程、无线与主机协议、离线帧解码。">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' file:; script-src 'self' file:; style-src 'self' file:; img-src 'self' file: data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>CH592F × BMI323 · 系统手册</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="stylesheet" href="css/style.css">
+  <script defer src="js/protocol.js"></script>
+  <script defer src="js/codec.js"></script>
+  <script defer src="js/render.js"></script>
+  <script defer src="js/app.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">跳到正文</a>
+  <aside class="sidebar">
+    <a class="brand" href="#overview" aria-label="系统手册首页"><span class="brand-mark">∿</span><span>FIELDNOTES<small>工业振动采集 / 系统手册</small></span></a>
+    <div class="edition">CH592F <span>×</span> BMI323</div>
+    <nav aria-label="章节导航">
+      <a class="active" href="#overview"><span>01</span> 系统概览</a>
+      <a href="#operation"><span>02</span> 如何运行</a>
+      <a href="#communication"><span>03</span> 如何通信</a>
+      <a href="#protocol"><span>04</span> 无线协议</a>
+      <a href="#host"><span>05</span> 主机帧与 CRC</a>
+      <a href="#decoder"><span>06</span> 离线解码器 <b>HEX</b></a>
+      <a href="#reliability"><span>07</span> 可靠性与时间</a>
+      <a href="#field"><span>08</span> 现场检查</a>
+    </nav>
+    <div class="sidebar-bottom"><span class="offline-dot"></span> 纯本地 · 无外部依赖<p>复制整个 site 文件夹<br>双击 index.html 即可打开</p><a href="README.md">使用与维护说明 ↗</a></div>
+  </aside>
+
+  <main id="main">
+    <header class="topbar"><span>工程文档 <i>/</i> 系统与通信</span><span class="local-label">OFFLINE EDITION <span>2026.11</span></span></header>
+    <section id="overview" class="section overview">
+      <div class="eyebrow"><span class="status-dot"></span> 阶段一 / 单节点全量上传</div>
+      <h1>让每一次振动，<br>都有据可循<span>。</span></h1>
+      <p class="lead">从料架上的三轴加速度，到 PC 上可重算的原始记录。<br>一页看懂这套系统如何采集、传输与还原数据。</p>
+      <div class="hero-actions"><a class="button primary" href="#operation">了解运行流程 <span>↗</span></a><a class="button secondary" href="#decoder">打开帧解码器 <span>→</span></a></div>
+      <div class="signal-strip" aria-label="采样参数">
+        <div><span>采样率</span><strong>3.2 <small>kHz</small></strong></div>
+        <div><span>加速度量程</span><strong>±16 <small>g</small></strong></div>
+        <div><span>满载 DATA 包</span><strong>35 <small>样本 / 包</small></strong></div>
+        <div><span>名义 DATA 速率</span><strong>≈91 <small>包 / 秒</small></strong></div>
+      </div>
+      <div class="scope-note"><strong>先读当前范围</strong><p>当前提供节点与网关固件（v1.5）、单页串口观测台与离线协议手册，构建与测试入口见<a href="../../README.md">项目说明</a>，固件验证、历史联调和接板步骤见<a href="../11_软件实现与接板验收.md">实现与验收记录</a>，v1.5 远程启停与待机低功耗见<a href="../13_远程启停与低功耗待机方案.md">待机方案</a>。原 Python PC 工具已移除；既有采集数据保留。覆盖率和时间精度仍需接板验证。当前以 <a href="../10_阶段一_单节点全量上传.md">10 阶段一</a> 为准；模式 B、多节点、太阳能、事件分类与位置推算属于后续扩展。</p></div>
+      <noscript><p class="notice">请启用 JavaScript 使用协议字段表和解码器。运行说明仍可直接阅读；完整协议见页面底部的本地源文档。</p></noscript>
+    </section>
+
+    <section id="operation" class="section">
+      <div class="section-heading"><div><div class="eyebrow">01 / DATA JOURNEY</div><h2>从传感器，一路到时间轴</h2></div><span class="section-tag">当前：模式 A</span></div>
+      <p class="section-intro">节点随料架移动，网关沿线固定安装，PC 负责保存与解释数据。当前先用一个节点、一个网关验证全链路，再根据覆盖测试增加网关。</p>
+      <div class="journey">
+        <article><span class="step-index">01 / SENSE</span><h3>BMI323 采集</h3><p>三轴原始值进入 FIFO，连同传感器时间字一起读取。</p><div class="tech-label">SPI0 · 7.5 MHz</div></article>
+        <span class="journey-arrow" aria-hidden="true">→</span>
+        <article><span class="step-index">02 / SEND</span><h3>CH592F 节点</h3><p>编号、时间锚点、35 点封包，留存到网关确认后释放。</p><div class="tech-label">2.4 GHz · RF_PHY</div></article>
+        <span class="journey-arrow" aria-hidden="true">→</span>
+        <article><span class="step-index">03 / FORWARD</span><h3>CH592F 网关</h3><p>标记接收时刻和 RSSI，发送 ACK，原样转发无线负载。</p><div class="tech-label">USB CDC · 字节流</div></article>
+        <span class="journey-arrow" aria-hidden="true">→</span>
+        <article><span class="step-index">04 / RECONSTRUCT</span><h3>上位机 / PC</h3><p>实时观测与导出 CSV；长期目标：原始日志 → 去重排序 → UTC 时间轴 → Parquet。</p><div class="tech-label">网页观测台 · 可重算设计</div></article>
+      </div>
+      <div class="two-column">
+        <div><h3>节点上电后做什么？</h3><ol class="numbered-list"><li><strong>建立身份和时钟</strong><p>读取配置，boot_id 每次上电递增；RTC 使用外部 32.768 kHz 晶振，cfg.b7 = 1。先完成两次 POLL 握手。</p></li><li><strong>待机或初始化 BMI323</strong><p>v1.5 默认上电待机（BMI323 Suspend + <code>LowPower_Sleep</code>，2 s 心跳带 PAUSED 标志）；收到 <code>STREAM_CTRL(1)</code> 后切到 SPI、检查 CHIP_ID = 0x43 并使能 3.2 kHz、±16 g、800 Hz 带宽。</p></li><li><strong>水位触发并读空 FIFO</strong><p>35 帧达到 140 字水位，经 INT1 → PA4 触发。约每 10.9 ms 读一次；20 ms 轮询兜底，避免丢沿后停采。</p></li><li><strong>持续封包和发送</strong><p>每包样本必须连续；GAP、段变化、配置变化或最老样本等待 100 ms 时提前封包。采集态每秒一包 STATUS，与 DATA 共用 seq。</p></li></ol></div>
+        <div class="hardware-panel"><div class="eyebrow">BENCH REFERENCE</div><h3>接线与资源</h3><dl class="pin-list"><div><dt>CSB / SCK</dt><dd>PA12 / PA13</dd></div><div><dt>SDI / SDO</dt><dd>PA14 / PA15</dd></div><div><dt>INT1</dt><dd>PA4 · 上升沿</dd></div><div><dt>32.768 kHz</dt><dd>PA10 / PA11</dd></div><div><dt>调试串口</dt><dd>UART1 · PA9 TX / PA8 RX</dd></div><div><dt>网关到 PC</dt><dd>USB CDC</dd></div></dl><p class="subtle">SPI 默认 15 MHz 超过 BMI323 的 10 MHz 上限，需设 8 分频至 7.5 MHz；SPI Mode 0，高位先行。v1.5 支持待机真睡眠与采集态浅 Idle；台架调试可用稳压电源。</p></div>
+      </div>
+    </section>
+
+    <section id="communication" class="section">
+      <div class="section-heading"><div><div class="eyebrow">02 / TWO LINKS</div><h2>两段链路，两层协议</h2></div></div>
+      <div class="link-pair"><article class="link-card"><div class="eyebrow">NODE ↔ GATEWAY</div><h3>2.4G 私有无线</h3><p>使用 WCH RF_PHY 自动 ACK，非 BLE GATT。阶段一从 <strong>1M PHY、0 dBm</strong> 起步，按现场丢包率再试 +4.5 / +9 dBm 和 2M。</p><ul><li>无线负载上限 251 B，DATA 最大 246 B。</li><li>节点和网关的频点、access address、CRCInit、PHY 必须匹配。</li><li>包类型：DATA、STATUS、POLL、ACK；SUMMARY / EVENT 留给模式 B。</li><li>候选频点为 2424 / 2448 / 2450 / 2474 / 2476 / 2478 MHz，须现场扫频确定。</li></ul></article><article class="link-card"><div class="eyebrow">GATEWAY ↔ PC</div><h3>USB CDC 字节流</h3><p>网关把无线包包进 <strong>RF_RX 主机帧</strong>，增加 gw_id、rx_us 和 RSSI。CDC 或局域网 TCP 转发，主机帧完全相同。</p><ul><li>USB / TCP 的一次读取不等于一帧，需自行拆帧。</li><li>PC 按 A5 5A 找帧头，用 len 确定边界，再验 CRC。</li><li>frame_seq 用来发现网关内部丢帧，不代替无线 seq。</li><li>远端网关可由小主机进行串口 ⇄ TCP 双向原样转发，不改时间戳。</li></ul></article></div>
+      <div class="callout"><strong>150 m 线体怎么接？</strong><p>先把一个网关放在线体中部测试。USB 线约 5 m，远端用网关旁的小主机转到车间局域网，或用 USB 延长器。发现盲区后再增加网关、分配 E1/E2/E3 并启用漫游；阶段一不预先固定网关数量。</p></div>
+      <details><summary>下行命令如何到达节点？</summary><p>PC 发 QUEUE_DOWNLINK → 网关排队 → 命令附在 ACK 中 → 节点执行并回显 cmd_ack。网关持续附带，直到看到对应命令编号；节点根据 cmd_id 避免重复执行。节点漫游时，PC 向该节点最近出现过的网关发命令。</p><div class="table-scroll"><table id="cmd-table" class="tbl"><thead><tr><th>code</th><th>命令</th><th>负载</th></tr></thead><tbody></tbody></table></div><p class="subtle">当前仅支持加速度配置、开始/停止、发射功率与 IDENTIFY。REBOOT 因可能重复重启而拒绝；模式切换、检测参数和频点表留待后续阶段。</p></details>
+    </section>
+
+    <section id="protocol" class="section">
+      <div class="section-heading"><div><div class="eyebrow">03 / RF PROTOCOL V1</div><h2>按字节理解无线包</h2></div><span class="section-tag">全部多字节字段：小端</span></div>
+      <p class="section-intro">选择包类型查看布局，悬停或聚焦字节可定位字段。以下输入均指<strong>无线应用负载</strong>，不包含 RF 空口前导、access address 或硬件 CRC。</p>
+      <div id="pkt-tabs" class="tabs" role="group" aria-label="无线包类型"></div>
+      <div id="pkt-meta" class="packet-meta"></div>
+      <div class="legend"><span class="g-hdr">身份 / 配置</span><span class="g-seq">序号 / 确认</span><span class="g-time">时间</span><span class="g-cmd">下行命令</span><span class="g-stat">状态</span><span class="g-data">样本</span></div>
+      <div class="table-scroll"><div id="pkt-layout" class="byte-grid" aria-label="逐字节字段布局"></div></div>
+      <p id="pkt-hint" class="field-hint" aria-live="polite"></p>
+      <div class="table-scroll"><table id="pkt-fields" class="tbl"><thead><tr><th>偏移 / B</th><th>类型</th><th>字段</th><th>含义</th></tr></thead><tbody></tbody></table></div>
+      <div class="two-column compact"><details><summary>flags：如何读状态位？</summary><div class="table-scroll"><table id="flag-table" class="tbl"><thead><tr><th>位</th><th>标志</th><th>含义</th></tr></thead><tbody></tbody></table></div></details><details><summary>cfg：采样与时间单位</summary><p>b0~3：ODR 码（0xC / 0xD / 0xE = 1.6 / 3.2 / 6.4 kHz）。b4~5：量程 0~3 = ±2 / 4 / 8 / 16 g。b6：带宽 0 = ODR/2，1 = ODR/4。b7：0 = µs，1 = RTC 32768 Hz 计数。</p><p><code>cfg = 0xFD</code> 即 3.2 kHz、±16 g、800 Hz、RTC 时间。字段名带 _us 也必须按 b7 解释；<strong>网关 rx_us 始终是微秒</strong>。</p></details></div>
+      <p class="source-line">完整协议：<a href="../02_无线协议.md">02 无线协议 ↗</a> · 后续 SUMMARY / EVENT：<a href="../05_边缘模式与功耗.md">05 边缘模式 ↗</a></p>
+    </section>
+
+    <section id="host" class="section">
+      <div class="section-heading"><div><div class="eyebrow">04 / HOST FRAMING</div><h2>主机帧，以及确定的 CRC</h2></div></div>
+      <p class="section-intro">CDC 和 TCP 使用相同封装：固定 6 B 前缀 + len 字节负载 + 2 B CRC。帧总长 <code>8 + len</code>，len 只表示 payload 长度。</p>
+      <div class="frame-strip"><div><b>A5 5A</b><span>帧头 · 2 B</span></div><div class="crc-covered"><b>type</b><span>u8</span></div><div class="crc-covered"><b>frame_seq</b><span>u8</span></div><div class="crc-covered"><b>len</b><span>u16 · LE</span></div><div class="crc-covered"><b>payload</b><span>len B</span></div><div><b>CRC16</b><span>u16 · LE</span></div></div>
+      <p class="frame-caption">绿色区域参与 CRC：type + frame_seq + len 的两字节 + 全部 payload。</p>
+      <div class="two-column crc-panel"><div><span class="eyebrow">CRC-16 / CCITT-FALSE</span><h3>不是只写一个“CCITT”</h3><dl class="pin-list"><div><dt>poly / init</dt><dd>0x1021 / 0xFFFF</dd></div><div><dt>refin / refout</dt><dd>false / false</dd></div><div><dt>xorout</dt><dd>0x0000</dd></div><div><dt>处理方向</dt><dd>高位优先，逐次截断 16 位</dd></div><div><dt>结果存放</dt><dd>低字节在前</dd></div></dl><p class="subtle">不含 A5 5A，也不含 CRC 自身。此 CRC 与无线硬件 CRC / CRCInit 独立。</p></div><div><div class="code-heading">参考算法 · Python</div><pre><code>crc = 0xFFFF
+for byte in data:   # 仅 type..payload
+    crc ^= byte &lt;&lt; 8
+    for _ in range(8):
+        crc = ((crc &lt;&lt; 1) ^
+               (0x1021 if crc &amp; 0x8000 else 0))
+        crc &amp;= 0xFFFF</code></pre><p class="test-vector">标准校验：<code>123456789 → 0x29B1</code><br>空输入：<code>0xFFFF</code></p></div></div>
+      <div class="vector-line"><span>GET_INFO / 完整帧</span><code>A5 5A 83 00 00 00 <b>24 C2</b></code><a href="#decoder" id="load-vector">在解码器中验证 →</a></div>
+      <details><summary>查看所有主机帧类型与负载</summary><div class="table-scroll"><table id="host-table" class="tbl"><thead><tr><th>type</th><th>名称</th><th>方向</th><th>payload</th></tr></thead><tbody></tbody></table></div><p class="subtle">HELLO 使用固定 8 B 布局，解码器可直接解析。SET_GW_CFG 留待后续阶段，当前固件返回不支持。</p></details>
+    </section>
+
+    <section id="decoder" class="section decoder-section">
+      <div class="section-heading"><div><div class="eyebrow">05 / PROTOCOL WORKBENCH</div><h2>把一帧数据，拆开看</h2></div><span class="section-tag">本机计算 · 不连接设备</span></div>
+      <p class="section-intro">粘贴一个完整主机帧，或一个 DATA / STATUS / POLL / ACK 无线负载。自动识别格式、检查长度，并校验主机帧 CRC。多帧请逐帧粘贴。</p>
+      <div class="decoder-workbench"><div class="input-heading"><label for="dec-in">十六进制输入</label><span>支持连续 HEX、空格、逗号、冒号与 0x 前缀</span></div><textarea id="dec-in" spellcheck="false" rows="6" placeholder="A5 5A 83 00 00 00 24 C2" aria-describedby="decoder-help"></textarea><div class="decoder-toolbar"><div class="example-buttons"><button id="dec-ex-host">主机 RF_RX 示例</button><button id="dec-ex-rf">无线 DATA 示例</button><button id="dec-ex-ack">ACK 示例</button><button id="dec-ex-time">TIME_REQ 示例</button></div><button id="dec-run" class="button primary">解码 <span>↗</span></button></div><p id="decoder-help" class="subtle">示例为合成数据，不代表现场采集。输入与结果仅保留在当前页面内存，关闭即清除。</p></div>
+      <div id="dec-out" aria-live="polite" aria-atomic="false"><div class="decoder-empty"><span>01 02 03</span><h3>一帧，一目了然。</h3><p>粘贴抓包，或点击上方示例开始。</p></div></div>
+    </section>
+
+    <section id="reliability" class="section">
+      <div class="section-heading"><div><div class="eyebrow">06 / INTEGRITY & TIME</div><h2>收到 ACK，不等于可以丢掉缓存</h2></div></div>
+      <p class="section-intro">RF 自动 ACK 的内容在挂接收时已经固定，无法保证包含刚收到的 seq。硬件 ACK 只算链路层初步成功，<strong>确认表匹配才释放节点缓存</strong>。</p>
+      <div class="state-flow"><div><span>待发送</span><b>QUEUED</b></div><i>合法硬件 ACK →</i><div><span>等待确认表</span><b>WAIT_CONF</b></div><i>匹配 node_id + seq_lo16 →</i><div class="state-done"><span>网关已接收入队</span><b>释放缓存</b></div></div>
+      <div class="two-column"><div><h3>异常如何处理</h3><ul class="text-list"><li><strong>没有合法 ACK</strong><p>连续失败前两次立即重发；之后指数退避并附加随机抖动。当前为单频点，漫游留待覆盖测试后按需启用。</p></li><li><strong>有 ACK，但确认表没有自己</strong><p>最多 8 槽等待确认；超过 3 次交换仍未确认的包重新排队。没有新数据时发 POLL 换取新确认表。</p></li><li><strong>PC 断开或来不及读</strong><p>网关保留队列；剩余槽少于 2 时暂停挂接收，让节点重试。节点 v1.5 默认 16 槽最多缓冲 560 样本，约 0.175 s（STATUS 占槽后略短），超出后丢最老包并记录 RING_DROP。</p></li><li><strong>网关突然掉电</strong><p>已确认但仍在网关 RAM 队列的包可能丢失；当前物理 8 槽，正常反压门限最多积压 7 包，PC 最终记录 RADIO 缺口。确认入队并不等于 PC 已持久化。</p></li></ul></div><div><h3>PC 如何还原连续样本</h3><ul class="text-list"><li><strong>唯一键：(node_id, boot_id, seq)</strong><p>只保存一份样本，每份副本仍可用于时间配对。重传带来乱序和重复，网关不做去重。</p></li><li><strong>oldest_seq 划定永久丢失边界</strong><p>oldest_seq 表示节点不再保留旧包；网关队列中仍可能有迟到副本。上位机设计采用 5 s 实时重排窗口，迟到帧仍需记录原始日志，停止采集后应完整重算。</p></li><li><strong>缺口按样本区间，而不是只按包数</strong><p>GAP = FIFO 层丢样；RING_DROP = 缓存溢出；RADIO = 已确认的永久缺包。混合故障不能唯一归因时记 AMBIGUOUS；长停顿丢样量未知时记 UNKNOWN_SAMPLE_LOSS，新段独立拟合。</p></li></ul></div></div>
+      <h3 class="subsection-title">三级时间映射，让样本对齐 UTC</h3>
+      <div class="time-model"><article><span>f₁ / 锚点拟合</span><h4>sample_idx → 节点时间</h4><p>使用 anchor_idx / anchor_us，按连续段、30 s 窗口拟合实际 ODR。阶段一节点时间单位为 RTC tick，1 tick ≈ 30.52 µs。</p></article><article><span>f₂ / 收发配对</span><h4>节点时间 → 网关时间</h4><p>用 sync_seq_lo + sync_attempt 找到对应副本，配对 sync_txdone_us 与 rx_us；不同网关分别建模。</p></article><article><span>f₃ / 类 NTP 对时</span><h4>网关时间 → UTC</h4><p>PC 每秒发 TIME_REQ，配合 TIME_RESP 的请求/响应时刻；60 s 内选 RTT 最小的 20% 样本拟合。</p></article></div>
+      <p class="formula">t_utc_ns = f₃(f₂(f₁(sample_idx)))</p><p class="subtle">u32 序号和时间先展开再拟合；RTC 回绕按 SDK 的 RTC_MAX_COUNT，不把 RTC 当作普通 2³² 微秒。网关微秒约 71.6 分钟回绕。节点采样时钟有 ±1.7% 偏差，不能仅用名义 3200 Hz 生成时间轴。</p>
+    </section>
+
+    <section id="field" class="section">
+      <div class="section-heading"><div><div class="eyebrow">07 / ON THE FLOOR</div><h2>在车间，先检查这几件事</h2></div></div>
+      <div class="two-column"><div><h3>上电到采集的检查顺序</h3><ol class="numbered-list"><li><strong>先在台架确认采集</strong><p>核对 PA4 与 SPI 接线，读取 CHIP_ID / ERR_REG；静止 Z 轴约 2048 LSB（1 g），INT1 约 91 次/s。安装方向 X 沿运行方向，Z 竖直。</p></li><li><strong>核对两端 RF 配置</strong><p>频点、PHY、access address、CRCInit 一致。先短距离验证接收、ACK 与确认表，再测远距离覆盖。</p></li><li><strong>验证 PC 收帧和持久化</strong><p>CDC 能读到主机帧，CRC 正确，原始日志连续落盘；TIME_REQ / TIME_RESP 往返正常。收帧工具需置 DTR，再按 03 文档检查主机帧。</p></li><li><strong>上线跑圈，再决定网关布局</strong><p>沿线至少跑 10 圈，记录每秒 RSSI、丢包与样本缺口。天线朝外、非金属外壳；喷涂区上机前确认防爆要求。</p></li></ol></div><div><h3>遇到问题，从现象往回查</h3><div class="table-scroll"><table class="tbl diagnosis"><thead><tr><th>现象</th><th>优先检查</th></tr></thead><tbody><tr><td>没有新样本</td><td>INT1 电平、PA4 接线、FIFO 是否读空、20 ms 兜底事件</td></tr><tr><td>GAP / FIFO_FULL 增长</td><td>FIFO 处理延迟、RF 等待超时、阻塞式串口日志</td></tr><tr><td>RING_DROP 增长</td><td>链路盲区、确认表、PC 是否在读、网关反压</td></tr><tr><td>主机 CRC 错误</td><td>拆帧边界、len 小端序、覆盖范围、CRC 低字节先发</td></tr><tr><td>波形时间跳变</td><td>boot / segment 变化、RTC 单位与回绕、同步配对 attempt</td></tr></tbody></table></div><div class="acceptance"><span class="eyebrow">阶段一验收目标 · 待实测</span><p><strong>24 h</strong> 连续运行<br>覆盖范围内样本完整率 <strong>≥99.9%</strong><br>时间标定后误差 <strong>≤2 ms</strong>，抖动 <strong>≤0.5 ms</strong></p><span>输出零重复、样本严格有序、所有缺口有区间和原因，原始日志可重算。</span></div></div></div>
+      <details><summary>数据存在哪里，能否离线使用？</summary><p>主机日志设计为按网关每小时追加写 <code>raw/YYYYMMDD/HH_gw{id}.bin</code>，每条为 <code>u64 pc_recv_ns + u16 len + 主机帧原文</code>，设计为每秒 flush + fsync。处理后按节点每小时写 Parquet，SQLite 记录缺口、状态和时间模型质量。原始日志是重算依据，模式 A 预计约 2 GB / 天 / 节点。</p><p>采集链路可运行在车间局域网，不需要公网。PC 绝对 UTC 精度依赖时钟来源，推荐 Linux + chrony 对厂内 NTP。本说明页完全本地运行，保留协议说明与离线解码器；当前固件和测试入口见根目录 README。</p></details>
+      <div class="source-library"><h3>继续查阅本地设计文档</h3><div><a href="../00_总体方案与评估.md">00 总体方案与评估 ↗</a><a href="../01_传感器端固件.md">01 传感器端固件 ↗</a><a href="../02_无线协议.md">02 无线协议 ↗</a><a href="../03_网关与上位机.md">03 网关与上位机 ↗</a><a href="../04_里程碑与测试.md">04 里程碑与测试 ↗</a><a href="../05_边缘模式与功耗.md">05 边缘模式与功耗 ↗</a><a href="../10_阶段一_单节点全量上传.md">10 阶段一实施范围 ↗</a><a href="../11_软件实现与接板验收.md">11 软件实现与接板验收 ↗</a><a href="../12_上位机振动指标改造方案.md">12 上位机振动指标改造 ↗</a><a href="../13_远程启停与低功耗待机方案.md">13 远程启停与低功耗待机 ↗</a></div></div>
+    </section>
+    <footer><span>CH592F × BMI323 <b>/</b> 工业振动采集系统</span><span>本地手册 · 协议 V1 · 无需联网</span><a href="#overview">回到顶部 ↑</a></footer>
+  </main>
+</body>
+</html>

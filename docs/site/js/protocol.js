@@ -1,0 +1,110 @@
+// 协议定义：与 docs/02_无线协议.md、docs/03_网关与上位机.md 保持一致，协议改动时同步修改
+'use strict';
+
+const COMMON = [
+  { off: 0, t: 'u8', n: 'ver_type', g: 'hdr', d: '高 4 位协议版本（=1），低 4 位包类型' },
+  { off: 1, t: 'u8', n: 'node_id', g: 'hdr', d: '节点编号 1~254' },
+  { off: 2, t: 'u8', n: 'flags', g: 'hdr', d: '状态标志位', bits: 'flags' },
+  { off: 3, t: 'u8', n: 'cfg', g: 'hdr', d: '采样配置与时间单位', bits: 'cfg' },
+  { off: 4, t: 'u16', n: 'boot_id', g: 'seq', d: '每次上电 +1，区分不同会话' },
+  { off: 6, t: 'u32', n: 'seq', g: 'seq', d: '本次上电内单调递增，DATA 与 STATUS 共用一个序列' },
+  { off: 10, t: 'u32', n: 'oldest_seq', g: 'seq', d: '节点缓存中最小的 seq；小于它的包不再由节点重传，PC 仍需处理网关队列中的迟到副本' },
+];
+
+const syncFields = (off) => [
+  { off, t: 'u32', n: 'sync_txdone_us', g: 'time', d: '最近一次收到硬件 ACK 的 DATA 发送完成时刻（单位由 cfg.b7 决定，阶段一为 RTC 计数）' },
+  { off: off + 4, t: 'u8', n: 'sync_seq_lo', g: 'time', d: '该次发送的 seq 低 8 位' },
+  { off: off + 5, t: 'u8', n: 'sync_attempt', g: 'time', d: '该次 DATA 发送的 attempt；0 表示还没有配对' },
+];
+
+const PROTO = {
+  flagBits: ['GAP', 'FIFO_FULL', 'CLIP', 'NEW_SEGMENT', 'RING_DROP', 'LOW_BATT', 'CFG_CHANGED', 'PAUSED'],
+  flagDesc: ['FIFO 层丢样', 'FIFO 接近满', '有样本达到满量程', '时间连续段中断', '发送缓存溢出丢包', '电量低', '采样配置变更', '已停止/低功耗待机（仅 STATUS，v1.5 起）'],
+  odr: { 0xB: 800, 0xC: 1600, 0xD: 3200, 0xE: 6400 },
+  rangeG: [2, 4, 8, 16],
+  packets: {
+    DATA: {
+      type: 0x1, title: 'DATA 样本包', dir: '节点 → 网关',
+      size: '36 B 包头 + n × 6 B 样本，n ≤ 35，最大 246 B',
+      desc: '模式 A 下连续发送，每包 35 个连续样本。3.2 kHz 时约每 10.9 ms 一包。',
+      fields: COMMON.concat([
+        { off: 14, t: 'u32', n: 'first_sample_idx', g: 'seq', d: '本包第一个样本的全局编号，包内样本编号严格连续' },
+        { off: 18, t: 'u8', n: 'n_samples', g: 'hdr', d: '本包样本数' },
+        { off: 19, t: 'u8', n: 'segment_id', g: 'time', d: '时间连续段编号，变化时 PC 重新拟合时间' },
+        { off: 20, t: 'u8', n: 'attempt', g: 'hdr', d: '本包第几次发送，从 1 开始' },
+        { off: 21, t: 'u8', n: 'cmd_ack', g: 'cmd', d: '最后执行的下行命令 id' },
+        { off: 22, t: 'u32', n: 'anchor_idx', g: 'time', d: '时间锚点：最近一次读 FIFO 时最新一帧的样本编号' },
+        { off: 26, t: 'u32', n: 'anchor_us', g: 'time', d: '该样本的节点本地时间（单位由 cfg.b7 决定，阶段一 cfg.b7=1 为 RTC 计数）' },
+      ], syncFields(30)),
+      samples: { off: 36, max: 35 },
+    },
+    STATUS: {
+      type: 0x2, title: 'STATUS 状态包', dir: '节点 → 网关', size: '63 B',
+      desc: '采集态每 1 s 一个、待机态每 2 s 一个（v1.5 起带 PAUSED 标志），与 DATA 走同一个发送缓存和 seq 序列，用于健康监测和缺口核对。',
+      fields: COMMON.concat([
+        { off: 14, t: 'u32', n: 'sample_idx_now', g: 'seq', d: '下一待采样编号，即已产生样本右开界；尚无样本时为 0' },
+        { off: 18, t: 'u16', n: 'batt_mv', g: 'stat', d: '电池/储能电压 mV' },
+        { off: 20, t: 'i16', n: 'bmi_temp_raw', g: 'stat', d: 'BMI323 温度，512 LSB/K，0 = 23 °C；0x8000 表示传感器休眠/温度无效（v1.5 起）' },
+        { off: 22, t: 'u32', n: 'tx_ok', g: 'stat', d: '成功发送次数' },
+        { off: 26, t: 'u32', n: 'tx_retry', g: 'stat', d: '重发次数' },
+        { off: 30, t: 'u32', n: 'tx_backoff', g: 'stat', d: '退避次数' },
+        { off: 34, t: 'u32', n: 'ring_drop_pkts', g: 'stat', d: '缓存溢出丢弃的包数' },
+        { off: 38, t: 'u32', n: 'ring_drop_samples', g: 'stat', d: '缓存溢出丢弃的样本数' },
+        { off: 42, t: 'u32', n: 'fifo_gap_samples', g: 'stat', d: 'FIFO 层丢样总数' },
+        { off: 46, t: 'u16', n: 'fifo_full_cnt', g: 'stat', d: 'FIFO 接近满的次数' },
+        { off: 48, t: 'u8', n: 'ring_max_used', g: 'stat', d: '发送缓存最大占用槽数' },
+        { off: 49, t: 'u8', n: 'last_cmd_id', g: 'cmd', d: '最后执行的下行命令 id' },
+        { off: 50, t: 'u16', n: 'bmi_err_reg', g: 'stat', d: 'BMI323 ERR_REG' },
+        { off: 52, t: 'i8', n: 'ack_rssi_avg', g: 'stat', d: 'ACK 平均 RSSI（dBm）' },
+        { off: 53, t: 'u8', n: 'fw_major', g: 'stat', d: '固件主版本' },
+        { off: 54, t: 'u8', n: 'fw_minor', g: 'stat', d: '固件次版本' },
+        { off: 55, t: 'u8', n: 'bmi_reinit_cnt', g: 'stat', d: 'BMI323 重新初始化次数' },
+        { off: 56, t: 'u8', n: 'cur_gw_id', g: 'stat', d: '最近一次 ACK 来自哪个网关' },
+        { off: 57, t: 'u8', n: 'cur_ch_idx', g: 'stat', d: '当前频点序号' },
+        { off: 58, t: 'u8', n: 'mode', g: 'stat', d: '0 = 模式 B，1 = 模式 A，2 = 休眠等待晃动（节点 v1.6 起）' },
+        { off: 59, t: 'u16', n: 'solar_mv', g: 'stat', d: '太阳能电压 mV（无则 0）' },
+        { off: 61, t: 'u16', n: 'roam_cnt', g: 'stat', d: '漫游次数' },
+      ]),
+    },
+    POLL: {
+      type: 0x5, title: 'POLL 探测包', dir: '节点 → 网关', size: '20 B',
+      desc: '只有包头，不占用 seq。用来换取新的确认表、漫游时探测网关、给网关提供 RSSI。',
+      fields: COMMON.map((f) => f.n === 'seq' ? { ...f, d: '填 next_seq，不占用序号' } : f).concat(syncFields(14)),
+    },
+    ACK: {
+      type: 0x8, title: 'ACK 应答', dir: '网关 → 节点', size: '15 B + 3 B × conf_n，最大 39 B',
+      desc: '由 RF 库在收到数据后 150 µs 自动发出，内容在网关挂接收时就已固定，所以确认表反映的是之前收到的包。',
+      fields: [
+        { off: 0, t: 'u8', n: 'ver_type', g: 'hdr', d: '类型 = 0x8' },
+        { off: 1, t: 'u8', n: 'gw_id', g: 'hdr', d: '网关编号' },
+        { off: 2, t: 'u8', n: 'cmd_node_id', g: 'cmd', d: '下行命令目标节点，0 = 无命令' },
+        { off: 3, t: 'u8', n: 'cmd_id', g: 'cmd', d: '命令编号（幂等）' },
+        { off: 4, t: 'u8', n: 'cmd_code', g: 'cmd', d: '命令码，见下行命令表' },
+        { off: 5, t: 'u8', n: 'cmd_len', g: 'cmd', d: '命令负载长度 ≤ 8' },
+        { off: 6, t: 'u8[8]', n: 'cmd_payload', g: 'cmd', d: '命令负载' },
+        { off: 14, t: 'u8', n: 'conf_n', g: 'seq', d: '确认表条数 ≤ 8' },
+      ],
+      conf: { off: 15, max: 8 },
+    },
+  },
+  cmds: [
+    ['0x01', 'SET_ACC_CFG', 'odr 码、range 码、bw'],
+    ['0x02', 'STREAM_CTRL', '0 停止 / 1 开始'],
+    ['0x03', 'SET_TX_POWER', '功率码'],
+    ['0x04', 'SET_MODE', '0 = 模式 B，1 = 模式 A（附带持续分钟数）'],
+    ['0x05', 'REBOOT', '—'],
+    ['0x06', 'IDENTIFY', 'LED 闪烁秒数'],
+    ['0x07', 'SET_DETECT', '模式 B 检测参数'],
+  ],
+  hostTypes: [
+    ['0x01', 'RF_RX', '网关 → PC', 'u8 gw_id, u32 rx_us, i8 rssi, u8 rf_len, rf_payload'],
+    ['0x02', 'TIME_RESP', '网关 → PC', 'u32 req_id, u32 t_req_us, u32 t_resp_us'],
+    ['0x03', 'GW_STATUS', '网关 → PC', 'rx_ok, crc_err, type_err, queue_full, net_drop, rearm_lat_max_us, tcp_reconnect（u32）'],
+    ['0x04', 'CMD_RESP', '网关 → PC', 'u8 req_type, u8 result'],
+    ['0x05', 'HELLO', '网关 → PC', '8 B：u8 gw_id, u8 fw_major, u8 fw_minor, u32 frequency_khz, u8 phy（1=1M，2=2M）'],
+    ['0x81', 'TIME_REQ', 'PC → 网关', 'u32 req_id'],
+    ['0x82', 'QUEUE_DOWNLINK', 'PC → 网关', 'u8 node_id, u8 cmd_id, u8 cmd_code, u8 cmd_len（≤ 8）, payload[cmd_len]'],
+    ['0x83', 'GET_INFO', 'PC → 网关', '—'],
+    ['0x84', 'SET_GW_CFG', 'PC → 网关', 'gw_id、频点、access address、CRCInit、PHY、服务器地址（写 DataFlash）'],
+  ],
+};

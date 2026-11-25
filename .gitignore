@@ -1,0 +1,10 @@
+build/
+firmware/build/
+__pycache__/
+*.pyc
+data/
+.DS_Store
+
+# local editor/agent tooling state
+.serena/
+.playwright-mcp/
